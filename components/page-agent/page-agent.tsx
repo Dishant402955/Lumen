@@ -143,12 +143,17 @@ export function PageAgent() {
         onDismiss={() => setHighlightIds([])}
       />
 
-      <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex flex-col items-end gap-3 sm:bottom-6 sm:right-6">
+      <div
+        className={cn(
+          "pointer-events-none fixed bottom-4 right-4 z-50 flex flex-col items-end gap-3 sm:bottom-6 sm:right-6 lg:bottom-6",
+          "max-lg:bottom-[calc(5.5rem+env(safe-area-inset-bottom))]",
+        )}
+      >
         {open ? (
           <div
             data-lumen-id="help-fab"
             data-lumen-label="Help"
-            className="pointer-events-auto flex h-[min(460px,72vh)] w-[min(380px,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--panel)] shadow-[0_24px_60px_rgba(0,0,0,0.35)]"
+            className="lumen-animate-scale pointer-events-auto flex h-[min(460px,72vh)] w-[min(380px,calc(100vw-2rem))] flex-col overflow-hidden rounded-[1.35rem] border border-[var(--line)] bg-[var(--panel)] shadow-[var(--shadow-lg)]"
           >
             <header className="flex items-start justify-between gap-2 border-b border-[var(--line)] px-4 py-3">
               <div>
@@ -251,11 +256,12 @@ export function PageAgent() {
             if (open) setInspect(false);
           }}
           className={cn(
-            "pointer-events-auto rounded-full px-4 py-3 text-sm font-semibold shadow-[0_12px_30px_rgba(0,0,0,0.28)] transition hover:brightness-105",
+            "pointer-events-auto rounded-full px-5 py-3.5 text-sm font-semibold shadow-[0_14px_34px_rgba(20,18,15,0.28)] transition duration-200 hover:brightness-105 active:scale-[0.98]",
             inspect
               ? "bg-[var(--ink)] text-[var(--paper)]"
-              : "bg-[var(--accent)] text-[var(--accent-ink)]",
+              : "bg-[linear-gradient(165deg,var(--accent-bright),var(--accent))] text-[var(--accent-ink)]",
           )}
+          style={{ bottom: "calc(env(safe-area-inset-bottom) + 0px)" }}
         >
           {open ? "Hide help" : inspect ? "Tap a control…" : "Need help?"}
         </button>
@@ -263,7 +269,7 @@ export function PageAgent() {
 
       {inspect ? (
         <div className="pointer-events-none fixed inset-x-0 top-0 z-[55] flex justify-center p-3">
-          <p className="rounded-full bg-[var(--ink)] px-4 py-2 text-sm text-[var(--paper)] shadow">
+          <p className="lumen-animate-in rounded-full bg-[var(--ink)] px-4 py-2 text-sm text-[var(--paper)] shadow-[var(--shadow-md)]">
             Point mode: tap any control with a help target
           </p>
         </div>

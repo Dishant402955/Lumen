@@ -1,5 +1,7 @@
 "use client";
 
+import { cn } from "@/lib/cn";
+
 export function Slider({
   label,
   value,
@@ -17,11 +19,17 @@ export function Slider({
   onChange: (value: number) => void;
   onCommit?: () => void;
 }) {
+  const pct = max === min ? 0 : ((value - min) / (max - min)) * 100;
+
   return (
     <label className="block text-sm">
-      <span className="mb-1 flex justify-between text-[var(--muted)]">
-        <span>{label}</span>
-        <span>{value}</span>
+      <span className="mb-1.5 flex items-baseline justify-between gap-3">
+        <span className="font-medium tracking-wide text-[var(--muted)]">
+          {label}
+        </span>
+        <span className="rounded-md bg-[var(--panel-2)] px-1.5 py-0.5 font-mono text-[11px] tabular-nums text-[var(--ink)]">
+          {value}
+        </span>
       </span>
       <input
         type="range"
@@ -32,7 +40,8 @@ export function Slider({
         onChange={(e) => onChange(Number(e.target.value))}
         onPointerUp={() => onCommit?.()}
         onKeyUp={() => onCommit?.()}
-        className="w-full accent-[var(--accent)] disabled:opacity-40"
+        className={cn("lumen-range")}
+        style={{ ["--fill" as string]: `${pct}%` }}
       />
     </label>
   );

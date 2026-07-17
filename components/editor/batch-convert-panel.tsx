@@ -117,8 +117,8 @@ export function BatchConvertPanel({ compact }: { compact?: boolean }) {
   return (
     <div
       className={cn(
-        "rounded-3xl border border-[var(--line)] bg-[var(--panel)]/90 p-4",
-        compact && "border-0 bg-transparent p-0",
+        "lumen-panel p-4",
+        compact && "border-0 bg-transparent p-0 shadow-none backdrop-blur-none",
       )}
     >
       <div className="space-y-4">
@@ -142,7 +142,7 @@ export function BatchConvertPanel({ compact }: { compact?: boolean }) {
         />
         <button
           type="button"
-          className="w-full rounded-xl bg-[var(--ink)] px-3 py-2 text-sm text-[var(--paper)]"
+          className="lumen-btn lumen-btn-primary w-full"
           onClick={() => inputRef.current?.click()}
         >
           Add images
@@ -204,7 +204,7 @@ export function BatchConvertPanel({ compact }: { compact?: boolean }) {
           <button
             type="button"
             disabled={!items.length || running}
-            className="rounded-xl bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-[var(--accent-ink)] disabled:opacity-40"
+            className="lumen-btn lumen-btn-accent disabled:opacity-40"
             onClick={() => void runBatch()}
           >
             {running ? "Converting…" : "Convert all"}

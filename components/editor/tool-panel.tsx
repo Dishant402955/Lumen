@@ -47,6 +47,20 @@ export const PANEL_IDS: PanelId[] = [
   "projects",
 ];
 
+export const PANEL_LABELS: Record<PanelId, string> = {
+  adjust: "Adjust",
+  crop: "Crop",
+  brush: "Brush",
+  text: "Text",
+  layers: "Layers",
+  resize: "Resize",
+  redeye: "Red-eye",
+  retouch: "Retouch",
+  export: "Export",
+  convert: "Convert",
+  projects: "Projects",
+};
+
 type Props = {
   panel: PanelId;
   setPanel: (p: PanelId) => void;
@@ -171,18 +185,19 @@ export function ToolPanel(props: Props) {
   return (
     <div
       className={cn(
-        "rounded-3xl border border-[var(--line)] bg-[var(--panel)]/90 p-4",
-        compact && "border-0 bg-transparent p-0",
+        "lumen-panel p-4",
+        compact && "border-0 bg-transparent p-0 shadow-none backdrop-blur-none",
       )}
     >
       {!compact ? (
-        <div className="mb-4 grid grid-cols-3 gap-1 rounded-xl bg-[var(--panel-2)] p-1 sm:grid-cols-3">
+        <div className="mb-4 grid grid-cols-3 gap-1 rounded-2xl bg-[var(--panel-2)] p-1.5 sm:grid-cols-3">
           {PANEL_IDS.map((id) => (
             <button
               key={id}
               type="button"
               data-lumen-id={`panel-${id}`}
-              data-lumen-label={id === "redeye" ? "Red-eye" : id}
+              data-lumen-label={PANEL_LABELS[id]}
+              data-active={panel === id}
               onClick={() => {
                 setPanel(id);
                 if (id === "crop") startCrop();
@@ -195,14 +210,9 @@ export function ToolPanel(props: Props) {
                   setTool("select");
                 }
               }}
-              className={cn(
-                "rounded-lg px-1 py-1.5 text-[11px] capitalize sm:text-xs",
-                panel === id
-                  ? "bg-[var(--ink)] text-[var(--paper)]"
-                  : "text-[var(--muted)]",
-              )}
+              className="lumen-tab"
             >
-              {id}
+              {PANEL_LABELS[id]}
             </button>
           ))}
         </div>
@@ -419,7 +429,7 @@ export function ToolPanel(props: Props) {
           <button
             type="button"
             disabled={disabled}
-            className="w-full rounded-xl bg-[var(--ink)] px-3 py-2 text-sm text-[var(--paper)] disabled:opacity-40"
+            className="lumen-btn lumen-btn-primary w-full disabled:opacity-40"
             onClick={() => setTool("brush")}
           >
             Brush tool active
@@ -432,7 +442,7 @@ export function ToolPanel(props: Props) {
           <button
             type="button"
             disabled={disabled}
-            className="w-full rounded-xl bg-[var(--ink)] px-3 py-2 text-sm text-[var(--paper)] disabled:opacity-40"
+            className="lumen-btn lumen-btn-primary w-full disabled:opacity-40"
             onClick={addTextLayer}
           >
             Add text layer
@@ -525,7 +535,7 @@ export function ToolPanel(props: Props) {
           <button
             type="button"
             disabled={disabled || active?.kind === "background"}
-            className="w-full rounded-xl border border-red-300 px-3 py-2 text-sm text-red-800 disabled:opacity-40"
+            className="lumen-btn lumen-btn-danger w-full disabled:opacity-40"
             onClick={deleteActiveLayer}
           >
             Delete active layer
@@ -574,7 +584,7 @@ export function ToolPanel(props: Props) {
           <button
             type="button"
             disabled={disabled}
-            className="w-full rounded-xl bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-[var(--accent-ink)] disabled:opacity-40"
+            className="lumen-btn lumen-btn-accent w-full disabled:opacity-40"
             onClick={applyResize}
           >
             Apply resize
@@ -599,7 +609,7 @@ export function ToolPanel(props: Props) {
           <button
             type="button"
             disabled={disabled}
-            className="w-full rounded-xl bg-[var(--ink)] px-3 py-2 text-sm text-[var(--paper)] disabled:opacity-40"
+            className="lumen-btn lumen-btn-primary w-full disabled:opacity-40"
             onClick={() => setTool("redeye")}
           >
             Red-eye tool active
@@ -733,7 +743,7 @@ export function ToolPanel(props: Props) {
           <button
             type="button"
             disabled={disabled || busyExport}
-            className="w-full rounded-xl bg-[var(--accent)] px-3 py-2.5 text-sm font-semibold text-[var(--accent-ink)] disabled:opacity-40"
+            className="lumen-btn lumen-btn-accent w-full disabled:opacity-40"
             onClick={onExport}
           >
             {busyExport ? "Exporting…" : "Download"}
@@ -779,8 +789,10 @@ function LayerRow({
   return (
     <li
       className={cn(
-        "rounded-xl border px-2 py-2",
-        active ? "border-[var(--ink)] bg-[var(--panel-2)]" : "border-[var(--line)]",
+        "rounded-2xl border px-2.5 py-2.5 transition",
+        active
+          ? "border-[var(--ink)] bg-[rgba(255,253,248,0.95)] shadow-[var(--shadow-sm)]"
+          : "border-[var(--line)] bg-[rgba(255,253,248,0.45)] hover:border-[var(--line-strong)]",
       )}
     >
       <button

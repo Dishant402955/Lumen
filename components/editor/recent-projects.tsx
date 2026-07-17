@@ -93,33 +93,34 @@ export function RecentProjectsPanel({
   return (
     <div
       className={cn(
-        "rounded-3xl border border-[var(--line)] bg-[var(--panel)]/90 p-4",
-        compact && "border-0 bg-transparent p-0",
+        "lumen-panel p-4",
+        compact && "border-0 bg-transparent p-0 shadow-none backdrop-blur-none",
       )}
     >
       <div className="space-y-3">
         <div>
-          <p className="font-[family-name:var(--font-display)] text-lg text-[var(--ink)]">
+          <p className="font-[family-name:var(--font-display)] text-lg tracking-tight text-[var(--ink)]">
             Recent projects
           </p>
-          <p className="mt-1 text-sm text-[var(--muted)]">
-            Saved on this device in IndexedDB. Works offline after the first
-            save.
+          <p className="mt-1 text-sm leading-relaxed text-[var(--muted)]">
+            Saved on this device. Reopen anytime — including offline.
           </p>
         </div>
 
-        {error ? <p className="text-sm text-red-700">{error}</p> : null}
+        {error ? (
+          <p className="text-sm text-[var(--danger)]">{error}</p>
+        ) : null}
 
         {!items.length ? (
-          <p className="text-sm text-[var(--muted)]">
-            No saved projects yet. Open an image and tap Save project.
+          <p className="rounded-2xl border border-dashed border-[var(--line)] bg-[rgba(255,253,248,0.5)] px-3 py-6 text-center text-sm text-[var(--muted)]">
+            No saved projects yet. Open an image and tap Save.
           </p>
         ) : (
-          <ul className="grid grid-cols-2 gap-2 sm:grid-cols-1">
+          <ul className="grid grid-cols-2 gap-2.5 sm:grid-cols-1">
             {items.map((item) => (
               <li
                 key={item.id}
-                className="overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--panel-2)]"
+                className="overflow-hidden rounded-2xl border border-[var(--line)] bg-[rgba(255,253,248,0.7)] transition hover:border-[var(--line-strong)] hover:shadow-[var(--shadow-sm)]"
               >
                 <button
                   type="button"
@@ -133,7 +134,7 @@ export function RecentProjectsPanel({
                     alt=""
                     className="aspect-[4/3] w-full object-cover"
                   />
-                  <div className="px-2 py-2">
+                  <div className="px-2.5 py-2">
                     <p className="truncate text-sm font-medium text-[var(--ink)]">
                       {item.name}
                     </p>
@@ -146,7 +147,7 @@ export function RecentProjectsPanel({
                 <div className="flex border-t border-[var(--line)]">
                   <button
                     type="button"
-                    className="flex-1 px-2 py-1.5 text-xs text-[var(--muted)] hover:text-[var(--ink)]"
+                    className="flex-1 px-2 py-2 text-xs font-medium text-[var(--muted)] transition hover:text-[var(--ink)]"
                     disabled={busy}
                     onClick={() => onOpen(item.id)}
                   >
@@ -154,7 +155,7 @@ export function RecentProjectsPanel({
                   </button>
                   <button
                     type="button"
-                    className="flex-1 px-2 py-1.5 text-xs text-red-800"
+                    className="flex-1 px-2 py-2 text-xs font-medium text-[var(--danger)]"
                     disabled={busy}
                     onClick={() => void onDelete(item.id)}
                   >
@@ -170,7 +171,7 @@ export function RecentProjectsPanel({
           <button
             type="button"
             disabled={busy}
-            className="w-full rounded-xl border border-[var(--line)] px-3 py-2 text-sm disabled:opacity-40"
+            className="lumen-btn w-full"
             onClick={() => void onClear()}
           >
             Clear all saved projects

@@ -18,27 +18,27 @@ export function MobileCropBar({
   onRotate: () => void;
 }) {
   return (
-    <div className="border-b border-[var(--line)] bg-[var(--panel)]/95 px-3 py-2 backdrop-blur-md lg:hidden">
+    <div className="border-b border-[var(--line)] bg-[rgba(250,247,240,0.96)] px-3 py-2.5 backdrop-blur-md">
       <div className="mb-2 flex gap-2">
         <button
           type="button"
-          className="min-h-11 flex-1 rounded-xl bg-[var(--accent)] px-3 text-sm font-semibold text-[var(--accent-ink)]"
+          className="lumen-btn lumen-btn-accent min-h-11 flex-1"
           onClick={onApply}
         >
           Apply crop
         </button>
         <button
           type="button"
-          className="min-h-11 flex-1 rounded-xl border border-[var(--line)] px-3 text-sm"
+          className="lumen-btn min-h-11 flex-1"
           onClick={onCancel}
         >
           Cancel
         </button>
         <button
           type="button"
-          className="min-h-11 rounded-xl border border-[var(--line)] px-3 text-sm"
+          className="lumen-btn min-h-11"
           onClick={onRotate}
-          title="Rotate 90° (preview resets during crop; rotation applies after)"
+          title="Rotate 90°"
         >
           Rotate
         </button>
@@ -48,11 +48,10 @@ export function MobileCropBar({
           <button
             key={a.id}
             type="button"
+            data-active={cropAspect === a.id}
             className={cn(
-              "min-h-10 shrink-0 rounded-lg border px-3 text-xs",
-              cropAspect === a.id
-                ? "border-[var(--ink)] bg-[var(--ink)] text-[var(--paper)]"
-                : "border-[var(--line)]",
+              "lumen-tab min-h-10 shrink-0 px-3 text-xs",
+              cropAspect === a.id && "shadow-[0_8px_18px_rgba(20,18,15,0.16)]",
             )}
             onClick={() => setCropAspect(a.id)}
           >
@@ -60,7 +59,7 @@ export function MobileCropBar({
           </button>
         ))}
       </div>
-      <p className="mt-1 text-[11px] text-[var(--muted)]">
+      <p className="mt-1.5 text-[11px] leading-snug text-[var(--muted)]">
         Drag the box to move · pull corner/edge handles to reshape
       </p>
     </div>

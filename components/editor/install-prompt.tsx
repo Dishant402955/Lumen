@@ -27,7 +27,7 @@ export function InstallPrompt() {
       type="button"
       data-lumen-id="install"
       data-lumen-label="Install app"
-      className="rounded-xl border border-[var(--line)] bg-[var(--panel)] px-3 py-2 text-sm text-[var(--ink)]"
+      className="lumen-btn lumen-btn-accent"
       onClick={async () => {
         await deferred.prompt();
         const choice = await deferred.userChoice;

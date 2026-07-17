@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import {
   ChangeEvent,
@@ -16,6 +16,7 @@ import { RecentProjectsPanel } from "@/components/editor/recent-projects";
 import { SelectionOverlay } from "@/components/editor/selection-overlay";
 import {
   PANEL_IDS,
+  PANEL_LABELS,
   PanelId,
   ToolPanel,
 } from "@/components/editor/tool-panel";
@@ -1437,104 +1438,118 @@ export function EditorShell() {
 
   return (
     <div className="relative flex min-h-full flex-1 flex-col">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(214,180,120,0.16),_transparent_55%),radial-gradient(ellipse_at_bottom_right,_rgba(90,120,100,0.18),_transparent_45%)]" />
-
-      <header className="relative z-10 flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] px-4 py-3 sm:px-6">
-        <div className="min-w-0">
-          <h1 className="font-[family-name:var(--font-display)] text-3xl leading-none tracking-tight text-[var(--ink)] sm:text-4xl">
-            Lumen
-          </h1>
-          <p className="mt-1 text-sm text-[var(--muted)]">
-            {!online
-              ? "Offline"
-              : swStatus.controlling
-                ? "Offline-ready"
-                : "Edit in the browser"}
-            {swStatus.version ? ` · SW ${swStatus.version}` : ""}
-            {saveState === "saving"
-              ? " · Saving…"
-              : saveState === "saved"
-                ? " · Saved on device"
-                : saveState === "error"
-                  ? " · Save failed"
-                  : ""}
-            {tool !== "select" ? ` · Tool: ${tool}` : ""}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*,.heic,.heif,image/heic,image/heif"
-            className="hidden"
-            onChange={onFileChange}
-          />
-          {swStatus.waiting ? (
+      <header className="relative z-10 border-b border-[var(--line)] bg-[rgba(250,247,240,0.72)] px-4 py-3 backdrop-blur-xl sm:px-6">
+        <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-3">
+          <div className="lumen-animate-in min-w-0">
+            <h1 className="font-[family-name:var(--font-display)] text-[2.15rem] leading-none tracking-[-0.03em] text-[var(--ink)] sm:text-4xl">
+              Lumen
+            </h1>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <span
+                className={cn(
+                  "lumen-chip",
+                  !online
+                    ? "lumen-chip-warn"
+                    : swStatus.controlling
+                      ? "lumen-chip-live"
+                      : undefined,
+                )}
+              >
+                {!online
+                  ? "Offline"
+                  : swStatus.controlling
+                    ? "Offline-ready"
+                    : "In browser"}
+              </span>
+              {saveState === "saving" ? (
+                <span className="lumen-chip lumen-chip-warn">Saving…</span>
+              ) : null}
+              {saveState === "saved" ? (
+                <span className="lumen-chip lumen-chip-live">Saved</span>
+              ) : null}
+              {saveState === "error" ? (
+                <span className="lumen-chip lumen-chip-warn">Save failed</span>
+              ) : null}
+              {tool !== "select" ? (
+                <span className="lumen-chip capitalize">Tool · {tool}</span>
+              ) : null}
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,.heic,.heif,image/heic,image/heif"
+              className="hidden"
+              onChange={onFileChange}
+            />
+            {swStatus.waiting ? (
+              <button
+                type="button"
+                className="lumen-btn"
+                onClick={() => void activateWaitingWorker()}
+              >
+                Update app
+              </button>
+            ) : null}
+            <InstallPrompt />
             <button
               type="button"
-              className="rounded-xl border border-[var(--line)] bg-[var(--panel)] px-3 py-2 text-sm"
-              onClick={() => void activateWaitingWorker()}
+              data-lumen-id="undo"
+              data-lumen-label="Undo"
+              disabled={!canUndo}
+              className="lumen-btn"
+              onClick={() => void undo()}
             >
-              Update app
+              Undo
             </button>
-          ) : null}
-          <InstallPrompt />
-          <button
-            type="button"
-            data-lumen-id="undo"
-            data-lumen-label="Undo"
-            disabled={!canUndo}
-            className="rounded-xl border border-[var(--line)] bg-[var(--panel)] px-3 py-2 text-sm disabled:opacity-40"
-            onClick={() => void undo()}
-          >
-            Undo
-          </button>
-          <button
-            type="button"
-            data-lumen-id="redo"
-            data-lumen-label="Redo"
-            disabled={!canRedo}
-            className="rounded-xl border border-[var(--line)] bg-[var(--panel)] px-3 py-2 text-sm disabled:opacity-40"
-            onClick={() => void redo()}
-          >
-            Redo
-          </button>
-          <button
-            type="button"
-            data-lumen-id="save-project"
-            data-lumen-label="Save project"
-            disabled={!doc || saveState === "saving"}
-            className="rounded-xl border border-[var(--line)] bg-[var(--panel)] px-3 py-2 text-sm disabled:opacity-40"
-            onClick={() => void saveProjectNow(false)}
-          >
-            Save project
-          </button>
-          <button
-            type="button"
-            data-lumen-id="projects"
-            data-lumen-label="Projects"
-            className="rounded-xl border border-[var(--line)] bg-[var(--panel)] px-3 py-2 text-sm"
-            onClick={() => setPanel("projects")}
-          >
-            Projects
-          </button>
-          <button
-            type="button"
-            data-lumen-id="open-image"
-            data-lumen-label="Open image"
-            className="rounded-xl bg-[var(--ink)] px-4 py-2 text-sm font-medium text-[var(--paper)]"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            Open image
-          </button>
+            <button
+              type="button"
+              data-lumen-id="redo"
+              data-lumen-label="Redo"
+              disabled={!canRedo}
+              className="lumen-btn"
+              onClick={() => void redo()}
+            >
+              Redo
+            </button>
+            <button
+              type="button"
+              data-lumen-id="save-project"
+              data-lumen-label="Save project"
+              disabled={!doc || saveState === "saving"}
+              className="lumen-btn"
+              onClick={() => void saveProjectNow(false)}
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              data-lumen-id="projects"
+              data-lumen-label="Projects"
+              className="lumen-btn"
+              onClick={() => setPanel("projects")}
+            >
+              Projects
+            </button>
+            <button
+              type="button"
+              data-lumen-id="open-image"
+              data-lumen-label="Open image"
+              className="lumen-btn lumen-btn-primary"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              Open image
+            </button>
+          </div>
         </div>
       </header>
 
-      <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4 p-4 pb-[calc(7.5rem+env(safe-area-inset-bottom))] sm:p-6 lg:grid lg:grid-cols-[1fr_320px] lg:pb-6">
+      <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4 p-4 pb-[calc(7.75rem+env(safe-area-inset-bottom))] sm:p-6 lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-5 lg:pb-6">
         <section
           className={cn(
-            "flex min-h-[280px] flex-1 flex-col overflow-hidden rounded-3xl border border-[var(--line)] bg-[var(--panel)]/80 backdrop-blur-sm transition",
-            dragOver && "border-[var(--accent)] bg-[var(--panel-2)]",
+            "lumen-stage flex min-h-[300px] flex-1 flex-col overflow-hidden transition-[border-color,box-shadow] duration-200",
+            dragOver && "is-drag",
           )}
           onDragOver={(e) => {
             e.preventDefault();
@@ -1548,20 +1563,26 @@ export function EditorShell() {
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-[var(--line)] px-6 py-12 text-center"
+                className="lumen-animate-scale relative flex min-h-[220px] flex-col items-center justify-center gap-3 overflow-hidden rounded-[1.4rem] border border-dashed border-[var(--line-strong)] bg-[rgba(255,253,248,0.55)] px-6 py-14 text-center transition hover:border-[var(--accent)] hover:bg-[rgba(255,253,248,0.8)]"
               >
-                <span className="font-[family-name:var(--font-display)] text-2xl text-[var(--ink)]">
+                <span className="lumen-drop-orb" aria-hidden />
+                <span className="relative font-[family-name:var(--font-display)] text-3xl tracking-tight text-[var(--ink)]">
                   Drop an image here
                 </span>
-                <span className="max-w-sm text-sm text-[var(--muted)]">
-                  Edit offline after the first visit. Projects auto-save to this
-                  device.
+                <span className="relative max-w-sm text-sm leading-relaxed text-[var(--muted)]">
+                  Open or drag JPEG, PNG, WebP, AVIF, or HEIC. Edits stay on
+                  this device and auto-save after you start working.
+                </span>
+                <span className="lumen-btn lumen-btn-accent relative mt-1">
+                  Choose a file
                 </span>
               </button>
-              <RecentProjectsPanel
-                onOpen={(id) => void openProject(id)}
-                refreshKey={projectsRefreshKey}
-              />
+              <div className="lumen-animate-in">
+                <RecentProjectsPanel
+                  onOpen={(id) => void openProject(id)}
+                  refreshKey={projectsRefreshKey}
+                />
+              </div>
             </div>
           ) : (
             <div
@@ -1574,12 +1595,12 @@ export function EditorShell() {
                 ref={stageRef}
                 data-lumen-id="canvas"
                 data-lumen-label="Canvas"
-                className="relative max-h-full max-w-full"
+                className="lumen-canvas-frame lumen-animate-scale relative max-h-full max-w-full"
               >
                 <canvas
                   ref={previewCanvasRef}
                   className={cn(
-                    "max-w-full touch-none rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.25)]",
+                    "max-w-full touch-none rounded-xl shadow-[0_24px_60px_rgba(20,18,15,0.28)]",
                     cropMode
                       ? "max-h-[min(48vh,560px)] sm:max-h-[min(60vh,720px)]"
                       : "max-h-[min(62vh,720px)] sm:max-h-[min(70vh,720px)]",
@@ -1610,36 +1631,36 @@ export function EditorShell() {
                 (() => {
                   const mapOpts = previewMapOptions();
                   if (!mapOpts) return null;
-                  const adj = cropMode
-                    ? {
-                        ...doc.adjustments,
-                        rotate: 0 as const,
-                        flipH: false,
-                        flipV: false,
-                      }
-                    : doc.adjustments;
+                  const adj = doc.adjustments;
                   const size = outputSize(
                     doc.width,
                     doc.height,
                     adj,
-                    cropMode ? null : doc.crop,
+                    doc.crop,
                   );
-                  const displayDraft = draftSelection
-                    ? docRectToOutputBounds(draftSelection, mapOpts)
-                    : null;
-                  const displaySelection = selection
-                    ? docRectToOutputBounds(selection, mapOpts)
-                    : null;
-                  const displayClone = cloneSource
-                    ? docPointToOutput(cloneSource.x, cloneSource.y, mapOpts)
-                    : null;
                   return (
                     <SelectionOverlay
                       imageWidth={size.width}
                       imageHeight={size.height}
-                      selection={displaySelection}
-                      draft={displayDraft}
-                      cloneSource={displayClone}
+                      selection={
+                        selection
+                          ? docRectToOutputBounds(selection, mapOpts)
+                          : null
+                      }
+                      draft={
+                        draftSelection
+                          ? docRectToOutputBounds(draftSelection, mapOpts)
+                          : null
+                      }
+                      cloneSource={
+                        cloneSource
+                          ? docPointToOutput(
+                              cloneSource.x,
+                              cloneSource.y,
+                              mapOpts,
+                            )
+                          : null
+                      }
                     />
                   );
                 })()}
@@ -1647,83 +1668,85 @@ export function EditorShell() {
             </div>
           )}
           {error ? (
-            <p className="border-t border-[var(--line)] px-4 py-2 text-sm text-red-700">
+            <p className="border-t border-[var(--line)] bg-[var(--danger-soft)] px-4 py-2.5 text-sm text-[var(--danger)]">
               {error}
             </p>
           ) : null}
           {image && doc ? (
             <p className="border-t border-[var(--line)] px-4 py-2 text-xs text-[var(--muted)]">
-              {image.name} · {doc.width}×{doc.height} · {doc.layers.length}{" "}
-              layers · Ctrl/Cmd+Z undo
+              <span className="font-medium text-[var(--ink-soft)]">
+                {image.name}
+              </span>
+              <span className="mx-1.5 text-[var(--muted-2)]">·</span>
+              {doc.width}×{doc.height}
+              <span className="mx-1.5 text-[var(--muted-2)]">·</span>
+              {doc.layers.length} layers
+              <span className="mx-1.5 text-[var(--muted-2)]">·</span>
+              Ctrl/Cmd+Z undo
             </p>
           ) : null}
         </section>
 
         {isDesktop ? (
-          <aside>
+          <aside className="lumen-animate-in self-start lg:sticky lg:top-4">
             <ToolPanel {...toolPanelProps} />
           </aside>
         ) : null}
       </div>
 
       {!isDesktop ? (
-      <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-[var(--line)] bg-[var(--panel)]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md">
-        {cropMode ? (
-          <MobileCropBar
-            cropAspect={cropAspect}
-            setCropAspect={onCropAspect}
-            onApply={applyCrop}
-            onCancel={cancelCrop}
-            onRotate={() => {
-              if (!doc) return;
-              // Exit crop identity preview so rotate is visible, then re-open crop.
-              setCropMode(false);
-              setDraftCrop(null);
-              onAdjustments(
-                {
-                  rotate: (((doc.adjustments.rotate + 90) %
-                    360) as typeof doc.adjustments.rotate),
-                },
-                true,
-              );
-            }}
-          />
-        ) : null}
-        <div className="flex gap-1 overflow-x-auto px-2 pt-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {PANEL_IDS.map((id) => (
-            <button
-              key={id}
-              type="button"
-              data-lumen-id={`panel-${id}`}
-              data-lumen-label={id === "redeye" ? "Red-eye" : id}
-              onClick={() => {
-                setPanel(id);
-                if (id === "crop") startCrop();
-                if (id === "brush") setTool("brush");
-                if (id === "text") setTool("text");
-                if (id === "redeye") setTool("redeye");
-                if (id === "retouch") setTool("marquee");
+        <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-[var(--line)] bg-[rgba(250,247,240,0.92)] pb-[env(safe-area-inset-bottom)] shadow-[0_-12px_40px_rgba(20,18,15,0.08)] backdrop-blur-xl">
+          {cropMode ? (
+            <MobileCropBar
+              cropAspect={cropAspect}
+              setCropAspect={onCropAspect}
+              onApply={applyCrop}
+              onCancel={cancelCrop}
+              onRotate={() => {
+                if (!doc) return;
+                setCropMode(false);
+                setDraftCrop(null);
+                onAdjustments(
+                  {
+                    rotate: (((doc.adjustments.rotate + 90) %
+                      360) as typeof doc.adjustments.rotate),
+                  },
+                  true,
+                );
               }}
-              className={cn(
-                "min-h-11 shrink-0 rounded-xl px-3 py-2 text-xs capitalize",
-                panel === id
-                  ? "bg-[var(--ink)] text-[var(--paper)]"
-                  : "text-[var(--muted)]",
-              )}
-            >
-              {id === "redeye" ? "Red-eye" : id}
-            </button>
-          ))}
-        </div>
-        <div
-          className={cn(
-            "overflow-y-auto px-3 pb-3",
-            cropMode ? "max-h-[22vh]" : "max-h-[34vh]",
-          )}
-        >
-          <ToolPanel {...toolPanelProps} compact />
-        </div>
-      </nav>
+            />
+          ) : null}
+          <div className="flex gap-1 overflow-x-auto px-2 pt-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {PANEL_IDS.map((id) => (
+              <button
+                key={id}
+                type="button"
+                data-lumen-id={`panel-${id}`}
+                data-lumen-label={PANEL_LABELS[id]}
+                data-active={panel === id}
+                onClick={() => {
+                  setPanel(id);
+                  if (id === "crop") startCrop();
+                  if (id === "brush") setTool("brush");
+                  if (id === "text") setTool("text");
+                  if (id === "redeye") setTool("redeye");
+                  if (id === "retouch") setTool("marquee");
+                }}
+                className="lumen-tab min-h-11 shrink-0 px-3 text-xs"
+              >
+                {PANEL_LABELS[id]}
+              </button>
+            ))}
+          </div>
+          <div
+            className={cn(
+              "overflow-y-auto overscroll-contain px-3 pb-3",
+              cropMode ? "max-h-[22vh]" : "max-h-[34vh]",
+            )}
+          >
+            <ToolPanel {...toolPanelProps} compact />
+          </div>
+        </nav>
       ) : null}
 
       <PageAgent />

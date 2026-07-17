@@ -18,9 +18,7 @@ export function MobileRotateBar({
       <button
         type="button"
         disabled={disabled}
-        className={cn(
-          "min-h-12 rounded-xl border border-[var(--line)] text-sm font-medium disabled:opacity-40",
-        )}
+        className="lumen-btn min-h-12"
         onClick={() =>
           onAdjustments(
             {
@@ -35,7 +33,10 @@ export function MobileRotateBar({
       <button
         type="button"
         disabled={disabled}
-        className="min-h-12 rounded-xl border border-[var(--line)] text-sm font-medium disabled:opacity-40"
+        className={cn(
+          "lumen-btn min-h-12",
+          adjustments.flipH && "border-[var(--ink)] bg-[var(--ink)] text-[var(--paper)]",
+        )}
         onClick={() => onAdjustments({ flipH: !adjustments.flipH }, true)}
       >
         Flip H
@@ -43,7 +44,10 @@ export function MobileRotateBar({
       <button
         type="button"
         disabled={disabled}
-        className="min-h-12 rounded-xl border border-[var(--line)] text-sm font-medium disabled:opacity-40"
+        className={cn(
+          "lumen-btn min-h-12",
+          adjustments.flipV && "border-[var(--ink)] bg-[var(--ink)] text-[var(--paper)]",
+        )}
         onClick={() => onAdjustments({ flipV: !adjustments.flipV }, true)}
       >
         Flip V
