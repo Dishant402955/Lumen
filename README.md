@@ -1,6 +1,6 @@
 # Lumen
 
-In-browser image editor with layers, brush, text, crop (aspect locks), pixel resize, red-eye, adjustments, undo/redo, and PNG/JPEG/WebP export. Editing stays on your device. After the first visit, a service worker caches the app shell so the UI works offline.
+In-browser image editor and converter: layers, brush, text, crop, resize, red-eye, undo/redo, plus **batch convert** to PNG/JPEG/WebP/AVIF/HEIC with EXIF keep. Editing stays on your device. A service worker caches the app shell for offline use after the first visit.
 
 This is a **single Next.js app** (not a monorepo).
 
@@ -27,11 +27,12 @@ If pnpm asks about build scripts for `sharp` / `unrs-resolver`, approve them (or
 
 ## Docs
 
-- [Handbook](docs/handbook.md) — product overview and workflow
-- [Editing depth](docs/editing.md) — layers, history, crop, resize, red-eye
-- [Offline](docs/offline.md) — service worker behavior
+- [Handbook](docs/handbook.md) — product overview
+- [Editing depth](docs/editing.md) — layers, history, tools
+- [Format conversion](docs/conversion.md) — batch, AVIF/HEIC, EXIF
+- [Offline](docs/offline.md) — service worker
 - [Page Agent](docs/page-agent.md) — in-app UI help
 
 ## Stack
 
-Next.js App Router, React 19, Tailwind CSS 4, TypeScript. Canvas API for edits and export. Optional OpenAI-compatible API for the help chatbot; heuristics work with no API key.
+Next.js App Router, React 19, Tailwind CSS 4, TypeScript, Canvas API, `heic2any`, `exifr`, `piexifjs`, `jszip`.

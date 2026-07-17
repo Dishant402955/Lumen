@@ -16,6 +16,8 @@ import {
   ToolPanel,
 } from "@/components/editor/tool-panel";
 import { PageAgent } from "@/components/page-agent/page-agent";
+import { decodeToImage, isHeicFile } from "@/lib/convert/decode";
+import { readExif, type ExifPayload } from "@/lib/convert/exif";
 import {
   bakeToCanvas,
   composeEdited,
@@ -84,6 +86,7 @@ export function EditorShell() {
   const [draftCrop, setDraftCrop] = useState<CropRect | null>(null);
   const [format, setFormat] = useState<ExportFormat>("image/png");
   const [quality, setQuality] = useState(0.92);
+  const [keepExif, setKeepExif] = useState(true);
   const [busyExport, setBusyExport] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [online, setOnline] = useState(true);
@@ -95,6 +98,7 @@ export function EditorShell() {
   const [redEyeRadius, setRedEyeRadius] = useState(28);
   const [bgVersion, setBgVersion] = useState(0);
   const docRef = useRef<EditorDoc | null>(null);
+  const exifRef = useRef<ExifPayload | null>(null);
 
   useEffect(() => {
     docRef.current = doc;
@@ -245,57 +249,60 @@ export function EditorShell() {
   }, [doc, cropMode, draftCrop, getBackground, bgVersion]);
 
   async function loadFile(file: File) {
-    if (!file.type.startsWith("image/")) {
+    const looksLikeImage =
+      file.type.startsWith("image/") || isHeicFile(file);
+    if (!looksLikeImage) {
       setError("Please choose an image file.");
       return;
     }
     setError(null);
     if (image?.objectUrl) URL.revokeObjectURL(image.objectUrl);
 
-    const objectUrl = URL.createObjectURL(file);
-    const img = await loadImage(objectUrl).catch((err: Error) => {
-      URL.revokeObjectURL(objectUrl);
-      setError(err.message);
-      throw err;
-    });
+    try {
+      exifRef.current = await readExif(file);
+      const decoded = await decodeToImage(file);
+      const img = decoded.image;
+      const objectUrl = decoded.objectUrl;
 
-    sourceImageRef.current = img;
-    backgroundCanvasRef.current = null;
-    paintStoreRef.current.clear();
+      sourceImageRef.current = img;
+      backgroundCanvasRef.current = null;
+      paintStoreRef.current.clear();
 
-    const nextDoc = createInitialDoc(img.naturalWidth, img.naturalHeight);
-    paintStoreRef.current.ensure(
-      nextDoc.layers.find((l) => l.kind === "paint")!.id,
-      nextDoc.width,
-      nextDoc.height,
-    );
+      const nextDoc = createInitialDoc(img.naturalWidth, img.naturalHeight);
+      paintStoreRef.current.ensure(
+        nextDoc.layers.find((l) => l.kind === "paint")!.id,
+        nextDoc.width,
+        nextDoc.height,
+      );
 
-    const snap = {
-      doc: cloneDoc(nextDoc),
-      paintData: paintStoreRef.current.capture(
-        nextDoc.layers.filter((l) => l.kind === "paint").map((l) => l.id),
-      ),
-      backgroundDataUrl: null,
-    };
-    historyRef.current = initHistory(snap);
+      historyRef.current = initHistory({
+        doc: cloneDoc(nextDoc),
+        paintData: paintStoreRef.current.capture(
+          nextDoc.layers.filter((l) => l.kind === "paint").map((l) => l.id),
+        ),
+        backgroundDataUrl: null,
+      });
 
-    setImage({
-      name: file.name || "image",
-      objectUrl,
-      width: img.naturalWidth,
-      height: img.naturalHeight,
-      fileType: file.type,
-    });
-    setDoc(nextDoc);
-    setResizeW(nextDoc.width);
-    setResizeH(nextDoc.height);
-    setAspectBase(nextDoc.width / Math.max(1, nextDoc.height));
-    setCropMode(false);
-    setDraftCrop(null);
-    setTool("select");
-    setPanel("adjust");
-    setBgVersion((v) => v + 1);
-    syncHistoryFlags();
+      setImage({
+        name: file.name || "image",
+        objectUrl,
+        width: img.naturalWidth,
+        height: img.naturalHeight,
+        fileType: file.type || "image/*",
+      });
+      setDoc(nextDoc);
+      setResizeW(nextDoc.width);
+      setResizeH(nextDoc.height);
+      setAspectBase(nextDoc.width / Math.max(1, nextDoc.height));
+      setCropMode(false);
+      setDraftCrop(null);
+      setTool("select");
+      setPanel("adjust");
+      setBgVersion((v) => v + 1);
+      syncHistoryFlags();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not open image.");
+    }
   }
 
   function onFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -780,6 +787,8 @@ export function EditorShell() {
         paintStoreRef.current,
         format,
         quality,
+        exifRef.current,
+        keepExif,
       );
       const ext =
         EXPORT_FORMATS.find((f) => f.id === format)?.extension ?? "png";
@@ -832,6 +841,8 @@ export function EditorShell() {
     setFormat,
     quality,
     setQuality,
+    keepExif,
+    setKeepExif,
     busyExport,
     onExport,
     addPaintLayer,
@@ -854,7 +865,7 @@ export function EditorShell() {
             Lumen
           </h1>
           <p className="mt-1 text-sm text-[var(--muted)]">
-            Layers, brush, text, crop, resize ·{" "}
+            Layers, convert, brush, text ·{" "}
             {tool !== "select" ? `Tool: ${tool}` : "Edit in the browser"}
             {!online ? " · Offline" : ""}
           </p>
@@ -863,7 +874,7 @@ export function EditorShell() {
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            accept="image/*,.heic,.heif,image/heic,image/heif"
             className="hidden"
             onChange={onFileChange}
           />

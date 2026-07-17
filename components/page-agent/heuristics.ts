@@ -40,9 +40,19 @@ const RULES: Array<{ patterns: RegExp[]; answer: string }> = [
       "Open Redeye, set the radius, then click the red pupil on the image. The fix is baked into the background and can be undone.",
   },
   {
+    patterns: [/batch|convert many|bulk|zip|multiple files/i],
+    answer:
+      "Open the Convert panel, add multiple images (HEIC works too), pick PNG/JPEG/WebP/AVIF/HEIC, optionally keep EXIF, then Convert all. Download ZIP packs every successful file.",
+  },
+  {
+    patterns: [/avif|heic|heif|exif|metadata|format conversion/i],
+    answer:
+      "Export and Convert support PNG, JPEG, WebP, AVIF, and HEIC. Keep EXIF is full for JPEG and best-effort for PNG/WebP/HEIC. AVIF uses the browser or a WASM encoder. HEIC input is decoded; HEIC output is a JPEG-in-HEIF file.",
+  },
+  {
     patterns: [/export|download|save|convert|webp|jpeg|jpg|png|format/i],
     answer:
-      "Open Export. Pick PNG, JPEG, or WebP, set quality for JPEG/WebP, then tap Download. That’s how you convert formats too.",
+      "Use Export for the current edit, or Convert for batch. Pick a format, set quality, toggle Keep EXIF, then Download (or ZIP in Convert).",
   },
   {
     patterns: [/crop|aspect/i],
@@ -82,7 +92,7 @@ const RULES: Array<{ patterns: RegExp[]; answer: string }> = [
   {
     patterns: [/help|what can|how does lumen|features/i],
     answer:
-      "Lumen is an offline-friendly image editor with layers, brush, text, crop (aspect locks), pixel resize, red-eye, adjustments, undo/redo, and PNG/JPEG/WebP export. Ask about any of those.",
+      "Lumen is an offline-friendly image editor and converter: layers, brush, text, crop, resize, red-eye, undo/redo, export/batch convert (PNG/JPEG/WebP/AVIF/HEIC + EXIF), and offline shell. Ask about any of those.",
   },
 ];
 

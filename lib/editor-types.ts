@@ -16,7 +16,11 @@ export type CropRect = {
 
 export type CropAspect = "free" | "1:1" | "4:3" | "3:2" | "16:9" | "9:16";
 
-export type ExportFormat = "image/png" | "image/jpeg" | "image/webp";
+export type {
+  ConvertFormat as ExportFormat,
+  ConvertFormat,
+} from "@/lib/convert/types";
+export { CONVERT_FORMATS, EXPORT_FORMATS } from "@/lib/convert/types";
 
 export type LoadedImage = {
   name: string;
@@ -108,16 +112,6 @@ export const CROP_ASPECTS: Array<{ id: CropAspect; label: string; ratio: number 
     { id: "16:9", label: "16:9", ratio: 16 / 9 },
     { id: "9:16", label: "9:16", ratio: 9 / 16 },
   ];
-
-export const EXPORT_FORMATS: Array<{
-  id: ExportFormat;
-  label: string;
-  extension: string;
-}> = [
-  { id: "image/png", label: "PNG", extension: "png" },
-  { id: "image/jpeg", label: "JPEG", extension: "jpg" },
-  { id: "image/webp", label: "WebP", extension: "webp" },
-];
 
 export const HISTORY_LIMIT = 40;
 
