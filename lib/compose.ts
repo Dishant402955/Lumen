@@ -39,7 +39,9 @@ function drawText(ctx: CanvasRenderingContext2D, layer: TextLayer) {
   ctx.font = `${layer.fontSize}px ${layer.fontFamily}`;
   ctx.textAlign = layer.align;
   ctx.textBaseline = "middle";
-  ctx.fillText(layer.text, layer.x, layer.y);
+  ctx.translate(layer.x, layer.y);
+  ctx.rotate(((layer.rotation || 0) * Math.PI) / 180);
+  ctx.fillText(layer.text, 0, 0);
   ctx.restore();
 }
 

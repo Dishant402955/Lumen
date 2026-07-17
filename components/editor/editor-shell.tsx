@@ -13,6 +13,7 @@ import { CropOverlay } from "@/components/editor/crop-overlay";
 import { InstallPrompt } from "@/components/editor/install-prompt";
 import { MobileCropBar } from "@/components/editor/mobile-crop-bar";
 import { RecentProjectsPanel } from "@/components/editor/recent-projects";
+import { SelectionOverlay } from "@/components/editor/selection-overlay";
 import {
   PANEL_IDS,
   PanelId,
@@ -37,13 +38,16 @@ import {
   CropAspect,
   CropRect,
   DEFAULT_BRUSH,
+  DEFAULT_RETOUCH,
   EditorDoc,
   EditorSnapshot,
   EditorTool,
   EXPORT_FORMATS,
   ExportFormat,
   LoadedImage,
+  RetouchSettings,
   TextLayer,
+  createId,
   createInitialDoc,
   createPaintLayer,
   createTextLayer,
@@ -65,6 +69,12 @@ import {
   registerServiceWorker,
   type SwStatus,
 } from "@/lib/register-sw";
+import {
+  clearSelection as clearSelectionPixelsFn,
+  cloneBrush,
+  healBrush,
+  healSelection,
+} from "@/lib/retouch";
 
 export function EditorShell() {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -81,6 +91,10 @@ export function EditorShell() {
     offsetX: number;
     offsetY: number;
   } | null>(null);
+  const marqueeStartRef = useRef<{ x: number; y: number } | null>(null);
+  const retouchStrokeRef = useRef(false);
+  const cloneOffsetRef = useRef<{ x: number; y: number } | null>(null);
+  const cloneSourceDataRef = useRef<ImageData | null>(null);
   const skipNextComposeRef = useRef(false);
 
   const [image, setImage] = useState<LoadedImage | null>(null);
@@ -90,6 +104,12 @@ export function EditorShell() {
   const [panel, setPanel] = useState<PanelId>("adjust");
   const [tool, setTool] = useState<EditorTool>("select");
   const [brush, setBrush] = useState<BrushSettings>(DEFAULT_BRUSH);
+  const [retouch, setRetouch] = useState<RetouchSettings>(DEFAULT_RETOUCH);
+  const [selection, setSelection] = useState<CropRect | null>(null);
+  const [draftSelection, setDraftSelection] = useState<CropRect | null>(null);
+  const [cloneSource, setCloneSource] = useState<{ x: number; y: number } | null>(
+    null,
+  );
   const [cropAspect, setCropAspect] = useState<CropAspect>("free");
   const [cropMode, setCropMode] = useState(false);
   const [draftCrop, setDraftCrop] = useState<CropRect | null>(null);
@@ -289,6 +309,7 @@ export function EditorShell() {
       if (panel === "brush") setTool("brush");
       if (panel === "text") setTool("text");
       if (panel === "redeye") setTool("redeye");
+      if (panel === "retouch") setTool("marquee");
     }
     window.addEventListener("lumen:goto-panel", onGoto);
     return () => window.removeEventListener("lumen:goto-panel", onGoto);
@@ -387,6 +408,10 @@ export function EditorShell() {
       setAspectBase(nextDoc.width / Math.max(1, nextDoc.height));
       setCropMode(false);
       setDraftCrop(null);
+      setSelection(null);
+      setDraftSelection(null);
+      setCloneSource(null);
+      cloneOffsetRef.current = null;
       setTool("select");
       setPanel("adjust");
       setBgVersion((v) => v + 1);
@@ -566,6 +591,82 @@ export function EditorShell() {
     return { x, y };
   }
 
+  function ensureBackgroundCanvas(): HTMLCanvasElement | null {
+    if (!doc || !sourceImageRef.current) return null;
+    if (backgroundCanvasRef.current) return backgroundCanvasRef.current;
+    const canvas = document.createElement("canvas");
+    canvas.width = doc.width;
+    canvas.height = doc.height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.drawImage(sourceImageRef.current, 0, 0, doc.width, doc.height);
+    backgroundCanvasRef.current = canvas;
+    return canvas;
+  }
+
+  function mutateBackground(
+    mutate: (imageData: ImageData) => void,
+    options?: { bump?: boolean },
+  ): boolean {
+    const canvas = ensureBackgroundCanvas();
+    if (!canvas) return false;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return false;
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    mutate(imageData);
+    ctx.putImageData(imageData, 0, 0);
+    if (options?.bump !== false) setBgVersion((v) => v + 1);
+    return true;
+  }
+
+  function normalizeRect(
+    x0: number,
+    y0: number,
+    x1: number,
+    y1: number,
+  ): CropRect {
+    const x = Math.min(x0, x1);
+    const y = Math.min(y0, y1);
+    const w = Math.abs(x1 - x0);
+    const h = Math.abs(y1 - y0);
+    return {
+      x: Math.round(x),
+      y: Math.round(y),
+      w: Math.round(w),
+      h: Math.round(h),
+    };
+  }
+
+  function dabHeal(x: number, y: number) {
+    mutateBackground(
+      (imageData) => {
+        healBrush(imageData, x, y, retouch.size / 2, retouch.strength);
+      },
+      { bump: false },
+    );
+  }
+
+  function dabClone(x: number, y: number) {
+    const canvas = ensureBackgroundCanvas();
+    if (!canvas || !cloneOffsetRef.current || !cloneSourceDataRef.current) {
+      return;
+    }
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    cloneBrush(
+      imageData,
+      cloneSourceDataRef.current,
+      x,
+      y,
+      retouch.size / 2,
+      cloneOffsetRef.current.x,
+      cloneOffsetRef.current.y,
+      retouch.strength,
+    );
+    ctx.putImageData(imageData, 0, 0);
+  }
+
   function paintAt(x: number, y: number, layerId: string) {
     if (!doc) return;
     const canvas = paintStoreRef.current.ensure(layerId, doc.width, doc.height);
@@ -619,6 +720,56 @@ export function EditorShell() {
       return;
     }
 
+    if (tool === "marquee") {
+      e.preventDefault();
+      marqueeStartRef.current = { x: point.x, y: point.y };
+      setDraftSelection({ x: Math.round(point.x), y: Math.round(point.y), w: 0, h: 0 });
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      return;
+    }
+
+    if (tool === "heal") {
+      e.preventDefault();
+      retouchStrokeRef.current = true;
+      lastPaintRef.current = null;
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      dabHeal(point.x, point.y);
+      lastPaintRef.current = { x: point.x, y: point.y };
+      redrawPreview();
+      return;
+    }
+
+    if (tool === "clone") {
+      e.preventDefault();
+      if (e.altKey) {
+        setCloneSource({ x: point.x, y: point.y });
+        cloneOffsetRef.current = null;
+        setError(null);
+        return;
+      }
+      if (!cloneSource) {
+        setError("Alt-click (Option-click) to set the clone source first.");
+        return;
+      }
+      const bg = ensureBackgroundCanvas();
+      if (!bg) return;
+      const ctx = bg.getContext("2d");
+      if (!ctx) return;
+      cloneSourceDataRef.current = ctx.getImageData(0, 0, bg.width, bg.height);
+      cloneOffsetRef.current = {
+        x: cloneSource.x - point.x,
+        y: cloneSource.y - point.y,
+      };
+      retouchStrokeRef.current = true;
+      lastPaintRef.current = null;
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      dabClone(point.x, point.y);
+      lastPaintRef.current = { x: point.x, y: point.y };
+      setError(null);
+      redrawPreview();
+      return;
+    }
+
     if (tool === "brush") {
       const active = doc.layers.find((l) => l.id === doc.activeLayerId);
       if (!active || active.kind !== "paint") {
@@ -652,6 +803,50 @@ export function EditorShell() {
     const point = clientToDoc(e.clientX, e.clientY);
     if (!point) return;
 
+    if (marqueeStartRef.current && tool === "marquee") {
+      const start = marqueeStartRef.current;
+      setDraftSelection(normalizeRect(start.x, start.y, point.x, point.y));
+      return;
+    }
+
+    if (retouchStrokeRef.current && tool === "heal") {
+      const prev = lastPaintRef.current;
+      if (prev) {
+        const dx = point.x - prev.x;
+        const dy = point.y - prev.y;
+        const dist = Math.hypot(dx, dy);
+        const step = Math.max(2, retouch.size * 0.35);
+        if (dist >= step) {
+          const n = Math.floor(dist / step);
+          for (let i = 1; i <= n; i++) {
+            dabHeal(prev.x + (dx * i) / n, prev.y + (dy * i) / n);
+          }
+          lastPaintRef.current = { x: point.x, y: point.y };
+          redrawPreview();
+        }
+      }
+      return;
+    }
+
+    if (retouchStrokeRef.current && tool === "clone") {
+      const prev = lastPaintRef.current;
+      if (prev) {
+        const dx = point.x - prev.x;
+        const dy = point.y - prev.y;
+        const dist = Math.hypot(dx, dy);
+        const step = Math.max(2, retouch.size * 0.35);
+        if (dist >= step) {
+          const n = Math.floor(dist / step);
+          for (let i = 1; i <= n; i++) {
+            dabClone(prev.x + (dx * i) / n, prev.y + (dy * i) / n);
+          }
+          lastPaintRef.current = { x: point.x, y: point.y };
+          redrawPreview();
+        }
+      }
+      return;
+    }
+
     if (paintingRef.current && tool === "brush") {
       paintAt(point.x, point.y, doc.activeLayerId);
       redrawPreview();
@@ -676,6 +871,22 @@ export function EditorShell() {
 
   function onPointerUp() {
     const current = docRef.current;
+    if (marqueeStartRef.current) {
+      marqueeStartRef.current = null;
+      setDraftSelection((draft) => {
+        if (draft && draft.w >= 2 && draft.h >= 2) {
+          queueMicrotask(() => setSelection(draft));
+        }
+        return null;
+      });
+    }
+    if (retouchStrokeRef.current && current) {
+      retouchStrokeRef.current = false;
+      lastPaintRef.current = null;
+      cloneSourceDataRef.current = null;
+      setBgVersion((v) => v + 1);
+      commitSnapshot(current);
+    }
     if (paintingRef.current && current) {
       paintingRef.current = false;
       lastPaintRef.current = null;
@@ -685,6 +896,36 @@ export function EditorShell() {
       textDragRef.current = null;
       commitSnapshot(current);
     }
+  }
+
+  function clearSelection() {
+    setSelection(null);
+    setDraftSelection(null);
+  }
+
+  function healSelectionArea() {
+    if (!doc || !selection || selection.w < 2 || selection.h < 2) return;
+    const ok = mutateBackground((imageData) => {
+      healSelection(imageData, selection, retouch.strength);
+    });
+    if (ok) commitSnapshot(doc);
+  }
+
+  function clearSelectionPixels() {
+    if (!doc || !selection) return;
+    const active = doc.layers.find((l) => l.id === doc.activeLayerId);
+    if (!active || active.kind !== "paint") {
+      setError("Select a paint layer to clear a selection.");
+      return;
+    }
+    const canvas = paintStoreRef.current.ensure(active.id, doc.width, doc.height);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    clearSelectionPixelsFn(imageData, selection);
+    ctx.putImageData(imageData, 0, 0);
+    setError(null);
+    commitSnapshot(doc);
   }
 
   function applyRedEye(x: number, y: number) {
@@ -876,6 +1117,67 @@ export function EditorShell() {
     commitSnapshot(next);
   }
 
+  function moveLayer(id: string, direction: "up" | "down") {
+    if (!doc) return;
+    const idx = doc.layers.findIndex((l) => l.id === id);
+    if (idx < 0) return;
+    const layer = doc.layers[idx];
+    if (layer.kind === "background") return;
+    // up = toward top of stack (higher index); never swap below background at 0
+    const target = direction === "up" ? idx + 1 : idx - 1;
+    if (target < 1 || target >= doc.layers.length) return;
+    const layers = [...doc.layers];
+    [layers[idx], layers[target]] = [layers[target], layers[idx]];
+    commitSnapshot({ ...doc, layers });
+  }
+
+  function cloneLayer(id: string) {
+    if (!doc) return;
+    const idx = doc.layers.findIndex((l) => l.id === id);
+    if (idx < 0) return;
+    const layer = doc.layers[idx];
+    if (layer.kind === "background") return;
+
+    if (layer.kind === "paint") {
+      const paints = doc.layers.filter((l) => l.kind === "paint").length;
+      const copy = createPaintLayer(paints + 1);
+      copy.name = `${layer.name} copy`;
+      copy.opacity = layer.opacity;
+      copy.visible = layer.visible;
+      const src = paintStoreRef.current.ensure(layer.id, doc.width, doc.height);
+      const dest = paintStoreRef.current.ensure(copy.id, doc.width, doc.height);
+      dest.getContext("2d")?.drawImage(src, 0, 0);
+      const layers = [
+        ...doc.layers.slice(0, idx + 1),
+        copy,
+        ...doc.layers.slice(idx + 1),
+      ];
+      commitSnapshot({ ...doc, layers, activeLayerId: copy.id });
+      return;
+    }
+
+    if (layer.kind === "text") {
+      const texts = doc.layers.filter((l) => l.kind === "text").length;
+      const copy: TextLayer = {
+        ...layer,
+        id: createId("text"),
+        name: `${layer.name} copy`,
+        x: layer.x + 24,
+        y: layer.y + 24,
+      };
+      // keep unique naming if already a copy
+      if (!layer.name.includes("copy")) {
+        copy.name = `Text ${texts + 1}`;
+      }
+      const layers = [
+        ...doc.layers.slice(0, idx + 1),
+        copy,
+        ...doc.layers.slice(idx + 1),
+      ];
+      commitSnapshot({ ...doc, layers, activeLayerId: copy.id });
+    }
+  }
+
   async function onExport() {
     if (!doc || !sourceImageRef.current) return;
     setBusyExport(true);
@@ -974,6 +1276,10 @@ export function EditorShell() {
       setAspectBase(project.width / Math.max(1, project.height));
       setCropMode(false);
       setDraftCrop(null);
+      setSelection(null);
+      setDraftSelection(null);
+      setCloneSource(null);
+      cloneOffsetRef.current = null;
       setTool("select");
       setPanel("adjust");
       setBgVersion((v) => v + 1);
@@ -1027,6 +1333,15 @@ export function EditorShell() {
     commitLayerOpacity,
     updateActiveText,
     deleteActiveLayer,
+    moveLayer,
+    cloneLayer,
+    retouch,
+    setRetouch,
+    selection,
+    clearSelection,
+    healSelectionArea,
+    clearSelectionPixels,
+    cloneSourceSet: !!cloneSource,
     onOpenProject: (id: string) => void openProject(id),
     projectsRefreshKey,
   };
@@ -1179,7 +1494,11 @@ export function EditorShell() {
                     cropMode
                       ? "max-h-[min(48vh,560px)] sm:max-h-[min(60vh,720px)]"
                       : "max-h-[min(62vh,720px)] sm:max-h-[min(70vh,720px)]",
-                    tool === "brush" && "cursor-crosshair",
+                    (tool === "brush" ||
+                      tool === "heal" ||
+                      tool === "clone" ||
+                      tool === "marquee") &&
+                      "cursor-crosshair",
                     tool === "redeye" && "cursor-cell",
                     (tool === "text" || tool === "select") && "cursor-move",
                   )}
@@ -1195,6 +1514,16 @@ export function EditorShell() {
                     crop={draftCrop}
                     aspect={cropAspect}
                     onChange={setDraftCrop}
+                  />
+                ) : null}
+                {!cropMode &&
+                (selection || draftSelection || cloneSource) ? (
+                  <SelectionOverlay
+                    imageWidth={doc.width}
+                    imageHeight={doc.height}
+                    selection={selection}
+                    draft={draftSelection}
+                    cloneSource={cloneSource}
                   />
                 ) : null}
               </div>
@@ -1250,6 +1579,7 @@ export function EditorShell() {
                 if (id === "brush") setTool("brush");
                 if (id === "text") setTool("text");
                 if (id === "redeye") setTool("redeye");
+                if (id === "retouch") setTool("marquee");
               }}
               className={cn(
                 "min-h-11 shrink-0 rounded-xl px-3 py-2 text-xs capitalize",

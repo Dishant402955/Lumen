@@ -7,7 +7,7 @@ How Lumen’s deeper editing tools work.
 Each open image becomes an **editor document**:
 
 - Fixed pixel size (`width` × `height`)
-- Ordered **layers**: `background` | `paint` | `text`
+- Ordered **layers**: `background` | `paint` | `text` (index 0 = bottom; background stays at the bottom)
 - Non-destructive **adjustments** (brightness / contrast / saturation / rotate / flip) applied at compose time
 - Optional draft **crop** until you Apply (then the crop is baked)
 
@@ -16,7 +16,7 @@ Paint pixels live in offscreen canvases (`PaintStore`). History snapshots store 
 ## Undo / redo
 
 - Stack limit: 40 snapshots (`HISTORY_LIMIT`)
-- Commits on: brush stroke end, text drag end / text blur, crop apply, resize apply, red-eye click, layer add/delete/visibility, adjustment slider release, rotate/flip
+- Commits on: brush stroke end, text drag end / text blur / text rotation commit, crop apply, resize apply, red-eye click, retouch stroke end, heal selection, clear selection on paint, layer add/delete/visibility/reorder/clone, adjustment slider release, rotate/flip
 - Shortcuts: Ctrl/Cmd+Z undo, Ctrl/Cmd+Shift+Z or Ctrl+Y redo
 
 ## Crop
@@ -36,4 +36,28 @@ Click near a pupil. In a circular radius, red-dominant pixels are desaturated to
 ## Brush & text
 
 - Brush draws only on the **active paint layer**
-- Text is vector-like metadata (string, font, color, position) composited each frame
+- Text is vector-like metadata (string, font, color, position, **rotation** in degrees) composited each frame
+- Drag text on the canvas to move; use the Text panel Rotation slider (−180…180)
+
+## Layers
+
+- **Up / Down** — reorder in the stack (background cannot move or leave index 0)
+- **Clone** — duplicates a paint layer (pixels copied) or text layer (offset +24px)
+- Visibility, opacity, add paint/text, delete active (not background)
+
+## Retouch
+
+Panel tools:
+
+| Tool | Behavior |
+| ---- | -------- |
+| **Marquee** | Drag a rectangle selection (dashed overlay) |
+| **Heal** | Soft brush blends toward samples outside the tip; bakes into the background |
+| **Clone** | Alt/Option-click to set source (marker on canvas), then paint to stamp with classic offset; source pixels are frozen for the stroke |
+
+Also:
+
+- **Heal selection** — runs heal dabs across the marquee on the background
+- **Clear selection** — clears alpha inside the marquee on the **active paint layer**
+- **Deselect** — clears the marquee without editing pixels
+- Size and strength sliders apply to heal/clone brushes

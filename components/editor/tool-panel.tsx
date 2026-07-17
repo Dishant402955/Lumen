@@ -16,6 +16,7 @@ import {
   EditorTool,
   EXPORT_FORMATS,
   ExportFormat,
+  RetouchSettings,
   TextLayer,
 } from "@/lib/editor-types";
 
@@ -27,6 +28,7 @@ export type PanelId =
   | "layers"
   | "resize"
   | "redeye"
+  | "retouch"
   | "export"
   | "convert"
   | "projects";
@@ -39,6 +41,7 @@ export const PANEL_IDS: PanelId[] = [
   "layers",
   "resize",
   "redeye",
+  "retouch",
   "export",
   "convert",
   "projects",
@@ -85,8 +88,19 @@ type Props = {
   toggleLayerVisible: (id: string) => void;
   setLayerOpacity: (id: string, opacity: number) => void;
   commitLayerOpacity: () => void;
+  moveLayer: (id: string, direction: "up" | "down") => void;
+  cloneLayer: (id: string) => void;
   updateActiveText: (patch: Partial<TextLayer>, commit?: boolean) => void;
   deleteActiveLayer: () => void;
+  retouch: RetouchSettings;
+  setRetouch: (
+    r: RetouchSettings | ((p: RetouchSettings) => RetouchSettings),
+  ) => void;
+  selection: { x: number; y: number; w: number; h: number } | null;
+  clearSelection: () => void;
+  healSelectionArea: () => void;
+  clearSelectionPixels: () => void;
+  cloneSourceSet: boolean;
   onOpenProject: (id: string) => void;
   projectsRefreshKey: number;
   compact?: boolean;
@@ -98,6 +112,7 @@ export function ToolPanel(props: Props) {
     setPanel,
     disabled,
     doc,
+    tool,
     setTool,
     brush,
     setBrush,
@@ -133,8 +148,17 @@ export function ToolPanel(props: Props) {
     toggleLayerVisible,
     setLayerOpacity,
     commitLayerOpacity,
+    moveLayer,
+    cloneLayer,
     updateActiveText,
     deleteActiveLayer,
+    retouch,
+    setRetouch,
+    selection,
+    clearSelection,
+    healSelectionArea,
+    clearSelectionPixels,
+    cloneSourceSet,
     onOpenProject,
     projectsRefreshKey,
     compact,
@@ -165,6 +189,7 @@ export function ToolPanel(props: Props) {
                 if (id === "brush") setTool("brush");
                 if (id === "text") setTool("text");
                 if (id === "redeye") setTool("redeye");
+                if (id === "retouch") setTool("marquee");
                 if (id === "resize") setTool("resize");
                 if (id === "adjust" || id === "layers" || id === "export") {
                   setTool("select");
@@ -441,6 +466,14 @@ export function ToolPanel(props: Props) {
                   className="h-10 w-full cursor-pointer rounded-lg border border-[var(--line)]"
                 />
               </label>
+              <Slider
+                label="Rotation"
+                value={Math.round(activeText.rotation || 0)}
+                min={-180}
+                max={180}
+                onChange={(rotation) => updateActiveText({ rotation })}
+                onCommit={() => updateActiveText({}, true)}
+              />
               <p className="text-xs text-[var(--muted)]">
                 Drag text on the canvas to reposition.
               </p>
@@ -483,6 +516,9 @@ export function ToolPanel(props: Props) {
                 onToggle={() => toggleLayerVisible(layer.id)}
                 onOpacity={(opacity) => setLayerOpacity(layer.id, opacity)}
                 onOpacityCommit={commitLayerOpacity}
+                onMoveUp={() => moveLayer(layer.id, "up")}
+                onMoveDown={() => moveLayer(layer.id, "down")}
+                onClone={() => cloneLayer(layer.id)}
               />
             ))}
           </ul>
@@ -571,6 +607,89 @@ export function ToolPanel(props: Props) {
         </div>
       ) : null}
 
+      {panel === "retouch" ? (
+        <div className="space-y-3">
+          <p className="text-sm text-[var(--muted)]">
+            Marquee selects a region. Heal blends from surroundings; clone
+            stamp copies from an Alt-click source. Edits bake into the
+            background (clear works on a paint layer).
+          </p>
+          <div className="grid grid-cols-3 gap-1">
+            {(
+              [
+                ["marquee", "Marquee"],
+                ["heal", "Heal"],
+                ["clone", "Clone"],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                disabled={disabled}
+                data-lumen-id={`retouch-${id}`}
+                data-lumen-label={label}
+                className={cn(
+                  "rounded-lg border px-2 py-2 text-xs disabled:opacity-40",
+                  tool === id
+                    ? "border-[var(--ink)] bg-[var(--ink)] text-[var(--paper)]"
+                    : "border-[var(--line)]",
+                )}
+                onClick={() => setTool(id)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <Slider
+            label="Brush size"
+            value={retouch.size}
+            min={4}
+            max={120}
+            disabled={disabled}
+            onChange={(size) => setRetouch((r) => ({ ...r, size }))}
+          />
+          <Slider
+            label="Strength"
+            value={retouch.strength}
+            min={10}
+            max={100}
+            disabled={disabled}
+            onChange={(strength) => setRetouch((r) => ({ ...r, strength }))}
+          />
+          <p className="text-xs text-[var(--muted)]">
+            {cloneSourceSet
+              ? "Clone source set — paint to stamp."
+              : "Clone: Alt-click (or Option-click) to set source first."}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={disabled || !selection}
+              className="rounded-xl border border-[var(--line)] px-3 py-2 text-sm disabled:opacity-40"
+              onClick={healSelectionArea}
+            >
+              Heal selection
+            </button>
+            <button
+              type="button"
+              disabled={disabled || !selection}
+              className="rounded-xl border border-[var(--line)] px-3 py-2 text-sm disabled:opacity-40"
+              onClick={clearSelectionPixels}
+            >
+              Clear selection
+            </button>
+            <button
+              type="button"
+              disabled={disabled || !selection}
+              className="rounded-xl border border-[var(--line)] px-3 py-2 text-sm disabled:opacity-40"
+              onClick={clearSelection}
+            >
+              Deselect
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {panel === "export" ? (
         <div className="space-y-4">
           <label className="block text-sm">
@@ -638,6 +757,9 @@ function LayerRow({
   onToggle,
   onOpacity,
   onOpacityCommit,
+  onMoveUp,
+  onMoveDown,
+  onClone,
 }: {
   layer: EditorLayer;
   active: boolean;
@@ -645,7 +767,11 @@ function LayerRow({
   onToggle: () => void;
   onOpacity: (opacity: number) => void;
   onOpacityCommit: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  onClone: () => void;
 }) {
+  const isBg = layer.kind === "background";
   return (
     <li
       className={cn(
@@ -682,6 +808,41 @@ function LayerRow({
         onChange={(e) => onOpacity(Number(e.target.value))}
         onPointerUp={onOpacityCommit}
       />
+      <div className="mt-2 flex flex-wrap gap-1">
+        <button
+          type="button"
+          disabled={isBg}
+          className="rounded-lg border border-[var(--line)] px-2 py-1 text-[10px] disabled:opacity-40"
+          onClick={(e) => {
+            e.stopPropagation();
+            onMoveUp();
+          }}
+        >
+          Up
+        </button>
+        <button
+          type="button"
+          disabled={isBg}
+          className="rounded-lg border border-[var(--line)] px-2 py-1 text-[10px] disabled:opacity-40"
+          onClick={(e) => {
+            e.stopPropagation();
+            onMoveDown();
+          }}
+        >
+          Down
+        </button>
+        <button
+          type="button"
+          disabled={isBg}
+          className="rounded-lg border border-[var(--line)] px-2 py-1 text-[10px] disabled:opacity-40"
+          onClick={(e) => {
+            e.stopPropagation();
+            onClone();
+          }}
+        >
+          Clone
+        </button>
+      </div>
     </li>
   );
 }

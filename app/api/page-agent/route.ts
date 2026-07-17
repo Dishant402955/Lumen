@@ -22,6 +22,7 @@ const PANEL_IDS = [
   "layers",
   "resize",
   "redeye",
+  "retouch",
   "export",
   "convert",
   "projects",
@@ -93,7 +94,7 @@ export async function POST(request: Request) {
     "answer: 2–5 sentences, plain text, no markdown.",
     `targets: zero or more of: ${TARGET_IDS.join(", ")}.`,
     `panel: optional one of: ${PANEL_IDS.join(", ")}.`,
-    "Only describe real features: layers, brush, text, adjust, crop, resize, red-eye, export/convert (PNG/JPEG/WebP/AVIF/HEIC+EXIF), projects/IndexedDB, offline SW, PWA install, Point-at-UI help.",
+    "Only describe real features: layers (reorder/clone), brush, text rotation, adjust, crop, resize, red-eye, retouch (marquee/heal/clone stamp), export/convert (PNG/JPEG/WebP/AVIF/HEIC+EXIF), projects/IndexedDB, offline SW, PWA install, Point-at-UI help.",
     "Never invent menus. If unsure, say so and suggest Point at UI.",
     body.context ? `Page context: ${body.context}` : "",
   ]

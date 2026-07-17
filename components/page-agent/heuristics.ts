@@ -28,7 +28,7 @@ const RULES: Array<{
   {
     patterns: [/layer/i],
     answer:
-      "Open Layers to show/hide, change opacity, add paint or text, or delete the active non-background layer.",
+      "Open Layers to show/hide, change opacity, reorder (Up/Down), clone paint or text, add layers, or delete the active non-background layer.",
     targets: ["panel-layers"],
     panel: "layers",
   },
@@ -42,9 +42,16 @@ const RULES: Array<{
   {
     patterns: [/text|type|caption|label/i],
     answer:
-      "Open Text → Add text layer. Edit in the panel; drag on the canvas to move.",
+      "Open Text → Add text layer. Edit content, size, color, and rotation; drag on the canvas to move.",
     targets: ["panel-text", "canvas"],
     panel: "text",
+  },
+  {
+    patterns: [/marquee|select(ion)?|heal|clone stamp|retouch|spot heal|healing brush/i],
+    answer:
+      "Open Retouch: Marquee to select, Heal to blend from surroundings, Clone stamp after Alt-clicking a source. Heal selection / Clear selection act on the box.",
+    targets: ["panel-retouch", "canvas"],
+    panel: "retouch",
   },
   {
     patterns: [/resize|dimension|pixels|width|height/i],
@@ -138,7 +145,7 @@ const RULES: Array<{
   {
     patterns: [/help|what can|how does lumen|features/i],
     answer:
-      "Lumen edits and converts images offline-first: layers, brush, text, crop, resize, red-eye, projects, batch convert, and PWA install. Ask about a tool, or use Point at UI.",
+      "Lumen edits and converts images offline-first: layers (reorder/clone), brush, text rotation, crop, resize, red-eye, retouch (marquee/heal/clone), projects, batch convert, and PWA install. Ask about a tool, or use Point at UI.",
     targets: ["help-fab", "open-image"],
   },
 ];

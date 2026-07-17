@@ -1,6 +1,6 @@
 # Lumen
 
-In-browser image editor and converter: layers, brush, text, crop, resize, red-eye, undo/redo, batch convert, offline projects, and **installable PWA** (icons + touch-friendly crop/rotate). Editing stays on your device.
+In-browser image editor and converter: layers (reorder/clone), brush, text rotation, crop, resize, red-eye, retouch (marquee/heal/clone), undo/redo, batch convert, offline projects, and **installable PWA** (icons + touch-friendly crop/rotate). Editing stays on your device.
 
 This is a **single Next.js app** (not a monorepo).
 
@@ -28,7 +28,7 @@ If pnpm asks about build scripts for `sharp` / `unrs-resolver`, approve them (or
 ## Docs
 
 - [Handbook](docs/handbook.md) — product overview
-- [Editing depth](docs/editing.md) — layers, history, tools
+- [Editing depth](docs/editing.md) — layers, history, retouch, tools
 - [Format conversion](docs/conversion.md) — batch, AVIF/HEIC, EXIF
 - [Offline](docs/offline.md) — service worker + recent projects
 - [Mobile & PWA](docs/mobile.md) — icons, install, touch crop/rotate

@@ -51,6 +51,8 @@ export type TextLayer = LayerBase & {
   fontFamily: string;
   color: string;
   align: "left" | "center" | "right";
+  /** Degrees, clockwise */
+  rotation: number;
 };
 
 export type EditorLayer = BackgroundLayer | PaintLayer | TextLayer;
@@ -78,13 +80,22 @@ export type EditorTool =
   | "text"
   | "crop"
   | "redeye"
-  | "resize";
+  | "resize"
+  | "marquee"
+  | "heal"
+  | "clone";
 
 export type BrushSettings = {
   size: number;
   color: string;
   opacity: number;
   soft: boolean;
+};
+
+export type RetouchSettings = {
+  size: number;
+  /** 0–100 */
+  strength: number;
 };
 
 export const DEFAULT_ADJUSTMENTS: Adjustments = {
@@ -101,6 +112,11 @@ export const DEFAULT_BRUSH: BrushSettings = {
   color: "#c4a46a",
   opacity: 100,
   soft: true,
+};
+
+export const DEFAULT_RETOUCH: RetouchSettings = {
+  size: 28,
+  strength: 85,
 };
 
 export const CROP_ASPECTS: Array<{ id: CropAspect; label: string; ratio: number | null }> =
@@ -165,6 +181,7 @@ export function createTextLayer(
     fontFamily: "Georgia, serif",
     color: "#1a1814",
     align: "center",
+    rotation: 0,
   };
 }
 

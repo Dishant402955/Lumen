@@ -13,6 +13,7 @@ export type LumenTargetId =
   | "panel-layers"
   | "panel-resize"
   | "panel-redeye"
+  | "panel-retouch"
   | "panel-export"
   | "panel-convert"
   | "panel-projects"
@@ -32,6 +33,7 @@ export type LumenTarget = {
     | "layers"
     | "resize"
     | "redeye"
+    | "retouch"
     | "export"
     | "convert"
     | "projects";
@@ -84,7 +86,7 @@ export const LUMEN_TARGETS: LumenTarget[] = [
     id: "canvas",
     label: "Canvas",
     explain:
-      "Your image preview. Draw with Brush, drag Text, click for Red-eye, or reshape the crop box here.",
+      "Your image preview. Draw with Brush, drag Text, click for Red-eye, retouch with Heal/Clone, or reshape the crop box here.",
     keywords: [/canvas|preview|stage/i],
   },
   {
@@ -114,17 +116,18 @@ export const LUMEN_TARGETS: LumenTarget[] = [
   {
     id: "panel-text",
     label: "Text",
-    explain: "Add text layers, edit content/size/color, and drag on the canvas to move.",
+    explain:
+      "Add text layers, edit content/size/color/rotation, and drag on the canvas to move.",
     panel: "text",
-    keywords: [/text|caption|type|font/i],
+    keywords: [/text|caption|type|font|rotation/i],
   },
   {
     id: "panel-layers",
     label: "Layers",
     explain:
-      "Background, paint, and text layers — visibility, opacity, add, and delete (not background).",
+      "Background, paint, and text — visibility, opacity, Up/Down reorder, Clone, add, and delete (not background).",
     panel: "layers",
-    keywords: [/layer/i],
+    keywords: [/layer|reorder|clone layer/i],
   },
   {
     id: "panel-resize",
@@ -140,6 +143,14 @@ export const LUMEN_TARGETS: LumenTarget[] = [
     explain: "Set radius, then click pupils on the canvas. Correction bakes into the background.",
     panel: "redeye",
     keywords: [/red[- ]?eye|redeye|pupil/i],
+  },
+  {
+    id: "panel-retouch",
+    label: "Retouch",
+    explain:
+      "Marquee selection, heal brush, and clone stamp (Alt-click source). Heal/clear act on the selection; heal/clone bake into the background.",
+    panel: "retouch",
+    keywords: [/retouch|marquee|heal|clone stamp|spot heal/i],
   },
   {
     id: "panel-export",

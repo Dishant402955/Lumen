@@ -5,8 +5,8 @@ Lumen is a web-only image editor. There is no desktop app and no monorepo — ju
 ## What you can do
 
 1. **Open** an image (button or drag-and-drop), including **HEIC/HEIF**. Files stay in the browser.
-2. **Layers** — background, paint, and text layers.
-3. **Brush / Text / Adjust / Crop / Resize / Red-eye** — see [Editing depth](./editing.md).
+2. **Layers** — background, paint, and text; reorder, clone, opacity, visibility.
+3. **Brush / Text (incl. rotation) / Adjust / Crop / Resize / Red-eye / Retouch** (marquee, heal, clone stamp) — see [Editing depth](./editing.md).
 4. **Undo / Redo** — history stack with keyboard shortcuts.
 5. **Export** — PNG, JPEG, WebP, AVIF, HEIC with optional EXIF keep.
 6. **Batch convert** — Convert panel: many files → one format → ZIP download. See [Format conversion](./conversion.md).
