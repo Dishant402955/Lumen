@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
-type BeforeInstallPromptEvent = Event & {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
-};
+import {
+  armInstallPromptCapture,
+  clearCapturedInstallPrompt,
+  subscribeInstallPrompt,
+  type BeforeInstallPromptEvent,
+} from "@/lib/install-prompt-capture";
 
 /** Shows an Install button when the browser fires beforeinstallprompt. */
 export function InstallPrompt() {
@@ -15,12 +16,8 @@ export function InstallPrompt() {
   const [hidden, setHidden] = useState(false);
 
   useEffect(() => {
-    const onPrompt = (event: Event) => {
-      event.preventDefault();
-      setDeferred(event as BeforeInstallPromptEvent);
-    };
-    window.addEventListener("beforeinstallprompt", onPrompt);
-    return () => window.removeEventListener("beforeinstallprompt", onPrompt);
+    armInstallPromptCapture();
+    return subscribeInstallPrompt(setDeferred);
   }, []);
 
   if (!deferred || hidden) return null;
@@ -35,6 +32,7 @@ export function InstallPrompt() {
         await deferred.prompt();
         const choice = await deferred.userChoice;
         if (choice.outcome === "accepted") setHidden(true);
+        clearCapturedInstallPrompt();
         setDeferred(null);
       }}
     >

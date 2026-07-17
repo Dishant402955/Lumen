@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Fraunces, Source_Sans_3 } from "next/font/google";
+import { ClientBootstrap } from "@/components/client-bootstrap";
 import "./globals.css";
 
 const display = Fraunces({
@@ -55,7 +56,10 @@ export default function RootLayout({
       lang="en"
       className={`${display.variable} ${body.variable} h-full antialiased`}
     >
-      <body className="flex min-h-full flex-col overscroll-none">{children}</body>
+      <body className="flex min-h-full flex-col overscroll-none">
+        <ClientBootstrap />
+        {children}
+      </body>
     </html>
   );
 }

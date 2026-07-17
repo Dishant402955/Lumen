@@ -15,6 +15,8 @@ export async function readExif(file: Blob): Promise<ExifPayload> {
     if (isJpeg(bytes)) {
       const dataUrl = await blobToDataUrl(new Blob([buffer], { type: "image/jpeg" }));
       const loaded = piexif.load(dataUrl);
+      if (!loaded["0th"]) loaded["0th"] = {};
+      loaded["0th"][piexif.ImageIFD.Orientation] = 1;
       const dumped = piexif.dump(loaded);
       if (dumped && dumped.length > 0) return { binary: dumped };
     }
@@ -54,7 +56,8 @@ function buildPiexifFromParsed(parsed: Record<string, unknown>): string | null {
 
     assign("Make", piexif.ImageIFD.Make, zeroth);
     assign("Model", piexif.ImageIFD.Model, zeroth);
-    assign("Orientation", piexif.ImageIFD.Orientation, zeroth);
+    // Pixels are already upright after canvas bake — never re-apply phone Orientation.
+    zeroth[piexif.ImageIFD.Orientation] = 1;
     assign("Software", piexif.ImageIFD.Software, zeroth);
     assign("DateTime", piexif.ImageIFD.DateTime, zeroth);
     assign("Artist", piexif.ImageIFD.Artist, zeroth);
@@ -92,7 +95,12 @@ export async function injectJpegExif(
   if (!exifBinary) return jpegBlob;
   try {
     const dataUrl = await blobToDataUrl(jpegBlob);
-    const withExif = piexif.insert(exifBinary, dataUrl);
+    const temp = piexif.insert(exifBinary, dataUrl);
+    const loaded = piexif.load(temp);
+    if (!loaded["0th"]) loaded["0th"] = {};
+    loaded["0th"][piexif.ImageIFD.Orientation] = 1;
+    const dumped = piexif.dump(loaded);
+    const withExif = piexif.insert(dumped, dataUrl);
     return await (await fetch(withExif)).blob();
   } catch {
     return jpegBlob;

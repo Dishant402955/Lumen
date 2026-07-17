@@ -23,7 +23,9 @@ Paint pixels live in offscreen canvases (`PaintStore`). History snapshots store 
 
 - Aspects: Free, 1:1, 4:3, 3:2, 16:9, 9:16
 - Interior drag moves; corner and edge handles reshape (respecting aspect when locked)
-- **Apply crop** extracts the region from background and each paint layer and shifts text coordinates
+- **Apply crop** extracts the region from background and each paint layer, shifts text, and **preserves layer order**
+- Crop preview uses identity rotate/flip so the box matches pixels; mobile Rotate exits crop then applies 90° so the change is visible
+- Pointer tools (brush, retouch, red-eye, text drag) inverse-map through rotate/flip so strokes land on the correct document pixels
 
 ## Resize
 

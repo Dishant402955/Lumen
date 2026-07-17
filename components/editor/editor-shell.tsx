@@ -27,6 +27,7 @@ import {
   composeEdited,
   downloadBlob,
   exportDocument,
+  outputSize,
   resizeCanvas,
   stemFromName,
 } from "@/lib/compose";
@@ -60,9 +61,15 @@ import {
   redoHistory,
   undoHistory,
 } from "@/lib/history";
+import { armInstallPromptCapture } from "@/lib/install-prompt-capture";
 import { blobToImage, persistProject } from "@/lib/offline/project-io";
 import { getProject, isIndexedDbAvailable } from "@/lib/offline/projects";
 import { PaintStore, loadImage } from "@/lib/paint-store";
+import {
+  docPointToOutput,
+  docRectToOutputBounds,
+  outputPointToDoc,
+} from "@/lib/pointer-math";
 import { removeRedEye } from "@/lib/red-eye";
 import {
   activateWaitingWorker,
@@ -130,6 +137,8 @@ export function EditorShell() {
   const exifRef = useRef<ExifPayload | null>(null);
   const projectIdRef = useRef<string | null>(null);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveInFlightRef = useRef<Promise<void> | null>(null);
+  const historyOpRef = useRef(0);
   const [projectsRefreshKey, setProjectsRefreshKey] = useState(0);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">(
     "idle",
@@ -146,11 +155,21 @@ export function EditorShell() {
   }, [doc]);
 
   useEffect(() => {
+    armInstallPromptCapture();
     const unsub = registerServiceWorker(setSwStatus);
     return () => {
       unsub();
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     };
+  }, []);
+
+  const [isDesktop, setIsDesktop] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const sync = () => setIsDesktop(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
   }, []);
 
   const syncHistoryFlags = useCallback(() => {
@@ -191,24 +210,46 @@ export function EditorShell() {
         }
         return;
       }
-      setSaveState("saving");
-      try {
-        const saved = await persistProject({
-          id: projectIdRef.current ?? undefined,
-          name: image?.name ?? "Untitled",
-          doc: current,
-          background: getBackground(),
-          paintStore: paintStoreRef.current,
-        });
-        projectIdRef.current = saved.id;
-        setSaveState("saved");
-        setProjectsRefreshKey((k) => k + 1);
-        if (!silent) setError(null);
-      } catch (err) {
-        setSaveState("error");
-        if (!silent) {
-          setError(err instanceof Error ? err.message : "Save failed.");
+
+      if (saveInFlightRef.current) {
+        await saveInFlightRef.current;
+      }
+
+      const latest = docRef.current;
+      if (!latest || !sourceImageRef.current) return;
+
+      // Reserve an id before awaiting so overlapping auto-saves cannot fork projects.
+      if (!projectIdRef.current) {
+        projectIdRef.current = createId("project");
+      }
+
+      const run = (async () => {
+        setSaveState("saving");
+        try {
+          const saved = await persistProject({
+            id: projectIdRef.current ?? undefined,
+            name: image?.name ?? "Untitled",
+            doc: latest,
+            background: getBackground(),
+            paintStore: paintStoreRef.current,
+          });
+          projectIdRef.current = saved.id;
+          setSaveState("saved");
+          setProjectsRefreshKey((k) => k + 1);
+          if (!silent) setError(null);
+        } catch (err) {
+          setSaveState("error");
+          if (!silent) {
+            setError(err instanceof Error ? err.message : "Save failed.");
+          }
         }
+      })();
+
+      saveInFlightRef.current = run;
+      try {
+        await run;
+      } finally {
+        if (saveInFlightRef.current === run) saveInFlightRef.current = null;
       }
     },
     [getBackground, image?.name],
@@ -242,15 +283,18 @@ export function EditorShell() {
   );
 
   const restoreSnapshot = useCallback(async (snap: EditorSnapshot) => {
+    const token = ++historyOpRef.current;
     const { doc: nextDoc, paintData, backgroundDataUrl } = snap;
     await paintStoreRef.current.restoreAll(
       paintData,
       nextDoc.width,
       nextDoc.height,
     );
+    if (token !== historyOpRef.current) return;
 
     if (backgroundDataUrl) {
       const img = await loadImage(backgroundDataUrl);
+      if (token !== historyOpRef.current) return;
       const canvas = document.createElement("canvas");
       canvas.width = nextDoc.width;
       canvas.height = nextDoc.height;
@@ -260,13 +304,17 @@ export function EditorShell() {
       backgroundCanvasRef.current = null;
     }
 
+    if (token !== historyOpRef.current) return;
     setDoc(cloneDoc(nextDoc));
+    docRef.current = cloneDoc(nextDoc);
     setResizeW(nextDoc.width);
     setResizeH(nextDoc.height);
     setAspectBase(nextDoc.width / Math.max(1, nextDoc.height));
     setBgVersion((v) => v + 1);
     setCropMode(false);
     setDraftCrop(null);
+    setSelection(null);
+    setDraftSelection(null);
   }, []);
 
   const undo = useCallback(async () => {
@@ -317,6 +365,16 @@ export function EditorShell() {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
       const mod = e.metaKey || e.ctrlKey;
       if (!mod) return;
       if (e.key.toLowerCase() === "z" && !e.shiftKey) {
@@ -482,14 +540,13 @@ export function EditorShell() {
     );
   }
 
-  useEffect(() => {
-    if (!cropMode || !draftCrop || !doc) return;
-    setDraftCrop(
-      applyAspectToCrop(draftCrop, cropAspect, doc.width, doc.height),
+  function onCropAspect(aspect: CropAspect) {
+    setCropAspect(aspect);
+    if (!doc) return;
+    setDraftCrop((prev) =>
+      prev ? applyAspectToCrop(prev, aspect, doc.width, doc.height) : prev,
     );
-    // only when aspect changes
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cropAspect]);
+  }
 
   function applyCrop() {
     if (!doc || !draftCrop || !sourceImageRef.current) return;
@@ -537,22 +594,24 @@ export function EditorShell() {
       nextCanvas.getContext("2d")?.drawImage(cropped, 0, 0);
     }
 
-    const textLayers = doc.layers
-      .filter((l): l is TextLayer => l.kind === "text")
-      .map((t) => ({
-        ...t,
-        x: t.x - region.x,
-        y: t.y - region.y,
-      }));
+    const nextLayers = doc.layers.map((layer) => {
+      if (layer.kind === "text") {
+        return {
+          ...layer,
+          x: layer.x - region.x,
+          y: layer.y - region.y,
+        };
+      }
+      return layer;
+    });
 
-    const bg = doc.layers.find((l) => l.kind === "background")!;
     const nextDoc: EditorDoc = {
       width: region.w,
       height: region.h,
       adjustments: doc.adjustments,
       crop: null,
       activeLayerId: doc.activeLayerId,
-      layers: [bg, ...paintLayers, ...textLayers],
+      layers: nextLayers,
     };
 
     setCropMode(false);
@@ -585,10 +644,38 @@ export function EditorShell() {
     if (!canvas || !doc) return null;
     const rect = canvas.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return null;
-    // In crop mode preview is identity transform at doc size
-    const x = ((clientX - rect.left) / rect.width) * doc.width;
-    const y = ((clientY - rect.top) / rect.height) * doc.height;
-    return { x, y };
+
+    const mapOptions = {
+      docWidth: doc.width,
+      docHeight: doc.height,
+      adjustments: doc.adjustments,
+      crop: doc.crop,
+      ignoreCrop: cropMode,
+      forceIdentityTransform: cropMode,
+    };
+    const { width: outW, height: outH } = outputSize(
+      doc.width,
+      doc.height,
+      cropMode
+        ? { ...doc.adjustments, rotate: 0, flipH: false, flipV: false }
+        : doc.adjustments,
+      cropMode ? null : doc.crop,
+    );
+    const outX = ((clientX - rect.left) / rect.width) * outW;
+    const outY = ((clientY - rect.top) / rect.height) * outH;
+    return outputPointToDoc(outX, outY, mapOptions);
+  }
+
+  function previewMapOptions() {
+    if (!doc) return null;
+    return {
+      docWidth: doc.width,
+      docHeight: doc.height,
+      adjustments: doc.adjustments,
+      crop: doc.crop,
+      ignoreCrop: cropMode,
+      forceIdentityTransform: cropMode,
+    };
   }
 
   function ensureBackgroundCanvas(): HTMLCanvasElement | null {
@@ -857,7 +944,7 @@ export function EditorShell() {
       const { id, offsetX, offsetY } = textDragRef.current;
       setDoc((prev) => {
         if (!prev) return prev;
-        return {
+        const next = {
           ...prev,
           layers: prev.layers.map((layer) =>
             layer.id === id && layer.kind === "text"
@@ -865,6 +952,8 @@ export function EditorShell() {
               : layer,
           ),
         };
+        docRef.current = next;
+        return next;
       });
     }
   }
@@ -1300,7 +1389,7 @@ export function EditorShell() {
     brush,
     setBrush,
     cropAspect,
-    setCropAspect,
+    setCropAspect: onCropAspect,
     cropMode,
     startCrop,
     applyCrop,
@@ -1517,15 +1606,43 @@ export function EditorShell() {
                   />
                 ) : null}
                 {!cropMode &&
-                (selection || draftSelection || cloneSource) ? (
-                  <SelectionOverlay
-                    imageWidth={doc.width}
-                    imageHeight={doc.height}
-                    selection={selection}
-                    draft={draftSelection}
-                    cloneSource={cloneSource}
-                  />
-                ) : null}
+                (selection || draftSelection || cloneSource) &&
+                (() => {
+                  const mapOpts = previewMapOptions();
+                  if (!mapOpts) return null;
+                  const adj = cropMode
+                    ? {
+                        ...doc.adjustments,
+                        rotate: 0 as const,
+                        flipH: false,
+                        flipV: false,
+                      }
+                    : doc.adjustments;
+                  const size = outputSize(
+                    doc.width,
+                    doc.height,
+                    adj,
+                    cropMode ? null : doc.crop,
+                  );
+                  const displayDraft = draftSelection
+                    ? docRectToOutputBounds(draftSelection, mapOpts)
+                    : null;
+                  const displaySelection = selection
+                    ? docRectToOutputBounds(selection, mapOpts)
+                    : null;
+                  const displayClone = cloneSource
+                    ? docPointToOutput(cloneSource.x, cloneSource.y, mapOpts)
+                    : null;
+                  return (
+                    <SelectionOverlay
+                      imageWidth={size.width}
+                      imageHeight={size.height}
+                      selection={displaySelection}
+                      draft={displayDraft}
+                      cloneSource={displayClone}
+                    />
+                  );
+                })()}
               </div>
             </div>
           )}
@@ -1542,20 +1659,26 @@ export function EditorShell() {
           ) : null}
         </section>
 
-        <aside className="hidden lg:block">
-          <ToolPanel {...toolPanelProps} />
-        </aside>
+        {isDesktop ? (
+          <aside>
+            <ToolPanel {...toolPanelProps} />
+          </aside>
+        ) : null}
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-[var(--line)] bg-[var(--panel)]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden">
+      {!isDesktop ? (
+      <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-[var(--line)] bg-[var(--panel)]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md">
         {cropMode ? (
           <MobileCropBar
             cropAspect={cropAspect}
-            setCropAspect={setCropAspect}
+            setCropAspect={onCropAspect}
             onApply={applyCrop}
             onCancel={cancelCrop}
             onRotate={() => {
               if (!doc) return;
+              // Exit crop identity preview so rotate is visible, then re-open crop.
+              setCropMode(false);
+              setDraftCrop(null);
               onAdjustments(
                 {
                   rotate: (((doc.adjustments.rotate + 90) %
@@ -1601,6 +1724,7 @@ export function EditorShell() {
           <ToolPanel {...toolPanelProps} compact />
         </div>
       </nav>
+      ) : null}
 
       <PageAgent />
     </div>

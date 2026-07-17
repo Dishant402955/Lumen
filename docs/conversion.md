@@ -31,7 +31,7 @@ Open the **Convert** panel:
 - **Input**: HEIC/HEIF files are decoded for editing and batch conversion (`heic2any`).
 - **Output**: Real **HEVC** HEIC — RGBA pixels are encoded with libheif/kvazaar in WASM (`elheif`). The encoder loads on first HEIC export/convert (~1.5MB).
 - **Quality**: HEVC uses the WASM encoder defaults (no separate quality slider).
-- **Keep EXIF**: Not applied to HEIC output; use JPEG if you need metadata preserved.
+- **Keep EXIF**: JPEG is strongest. Orientation is forced to upright (`1`) after canvas bake so phone photos do not flip twice. AVIF/HEIC keep pixels only.
 - **AVIF encode** needs a browser that supports `canvas.toBlob('image/avif')` (Chrome and Edge do; Firefox/Safari may not yet).
 
 ## Privacy

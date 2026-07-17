@@ -39,12 +39,17 @@ export function registerServiceWorker(
     }
   };
 
-  navigator.serviceWorker.addEventListener("message", onMessage);
-  navigator.serviceWorker.addEventListener("controllerchange", () => {
+  const onControllerChange = () => {
     void emit();
-  });
+  };
 
-  window.addEventListener("load", () => {
+  navigator.serviceWorker.addEventListener("message", onMessage);
+  navigator.serviceWorker.addEventListener(
+    "controllerchange",
+    onControllerChange,
+  );
+
+  const register = () => {
     void navigator.serviceWorker
       .register("/sw.js")
       .then(async (reg) => {
@@ -61,13 +66,24 @@ export function registerServiceWorker(
         console.warn("Service worker registration failed", error);
         void emit();
       });
-  });
+  };
+
+  // Client effects often run after `load`; register immediately when already complete.
+  if (document.readyState === "complete") {
+    register();
+  } else {
+    window.addEventListener("load", register, { once: true });
+  }
 
   void emit();
 
   return () => {
     cancelled = true;
     navigator.serviceWorker.removeEventListener("message", onMessage);
+    navigator.serviceWorker.removeEventListener(
+      "controllerchange",
+      onControllerChange,
+    );
   };
 }
 

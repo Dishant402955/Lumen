@@ -27,6 +27,22 @@ export function BatchConvertPanel({ compact }: { compact?: boolean }) {
 
   const formatMeta = CONVERT_FORMATS.find((f) => f.id === format)!;
 
+  function invalidateDoneResults() {
+    setItems((prev) =>
+      prev.map((item) =>
+        item.status === "done"
+          ? {
+              ...item,
+              status: "queued" as const,
+              resultBlob: undefined,
+              resultName: undefined,
+              error: undefined,
+            }
+          : item,
+      ),
+    );
+  }
+
   function onPick(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
     event.target.value = "";
@@ -136,7 +152,10 @@ export function BatchConvertPanel({ compact }: { compact?: boolean }) {
           <span className="mb-1 block text-[var(--muted)]">Output format</span>
           <select
             value={format}
-            onChange={(e) => setFormat(e.target.value as ConvertFormat)}
+            onChange={(e) => {
+              setFormat(e.target.value as ConvertFormat);
+              invalidateDoneResults();
+            }}
             className="w-full rounded-xl border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2"
           >
             {CONVERT_FORMATS.map((f) => (
@@ -158,7 +177,10 @@ export function BatchConvertPanel({ compact }: { compact?: boolean }) {
             value={Math.round(quality * 100)}
             min={10}
             max={100}
-            onChange={(v) => setQuality(v / 100)}
+            onChange={(v) => {
+              setQuality(v / 100);
+              invalidateDoneResults();
+            }}
           />
         ) : null}
 
@@ -166,7 +188,10 @@ export function BatchConvertPanel({ compact }: { compact?: boolean }) {
           <input
             type="checkbox"
             checked={keepExif}
-            onChange={(e) => setKeepExif(e.target.checked)}
+            onChange={(e) => {
+              setKeepExif(e.target.checked);
+              invalidateDoneResults();
+            }}
           />
           Keep EXIF metadata
         </label>

@@ -22,10 +22,7 @@ export function HighlightLayer({
   const [rects, setRects] = useState<HighlightRect[]>([]);
 
   useEffect(() => {
-    if (!targetIds.length) {
-      setRects([]);
-      return;
-    }
+    if (!targetIds.length) return;
 
     function measure() {
       const next: HighlightRect[] = [];
@@ -65,7 +62,8 @@ export function HighlightLayer({
     };
   }, [targetIds, onDismiss]);
 
-  if (!targetIds.length || !rects.length) return null;
+  if (!targetIds.length) return null;
+  if (!rects.length) return null;
 
   return (
     <div className="pointer-events-none fixed inset-0 z-[60]">
