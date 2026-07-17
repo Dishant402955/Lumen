@@ -1,6 +1,6 @@
 # Lumen
 
-In-browser image editor and converter: layers, brush, text, crop, resize, red-eye, undo/redo, plus **batch convert** to PNG/JPEG/WebP/AVIF/HEIC with EXIF keep. Editing stays on your device. A service worker caches the app shell for offline use after the first visit.
+In-browser image editor and converter: layers, brush, text, crop, resize, red-eye, undo/redo, batch convert, offline projects, and **installable PWA** (icons + touch-friendly crop/rotate). Editing stays on your device.
 
 This is a **single Next.js app** (not a monorepo).
 
@@ -30,7 +30,8 @@ If pnpm asks about build scripts for `sharp` / `unrs-resolver`, approve them (or
 - [Handbook](docs/handbook.md) — product overview
 - [Editing depth](docs/editing.md) — layers, history, tools
 - [Format conversion](docs/conversion.md) — batch, AVIF/HEIC, EXIF
-- [Offline](docs/offline.md) — service worker
+- [Offline](docs/offline.md) — service worker + recent projects
+- [Mobile & PWA](docs/mobile.md) — icons, install, touch crop/rotate
 - [Page Agent](docs/page-agent.md) — in-app UI help
 
 ## Stack

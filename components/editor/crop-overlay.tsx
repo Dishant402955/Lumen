@@ -33,7 +33,6 @@ export function CropOverlay({
   const dragRef = useRef<{
     handle: CropHandle;
     origin: CropRect;
-    startPointer: { x: number; y: number };
     grabOffset?: { x: number; y: number };
   } | null>(null);
 
@@ -52,7 +51,6 @@ export function CropOverlay({
     dragRef.current = {
       handle,
       origin: { ...crop },
-      startPointer: pointer,
       grabOffset:
         handle === "move"
           ? { x: pointer.x - crop.x, y: pointer.y - crop.y }
@@ -93,11 +91,14 @@ export function CropOverlay({
   }
 
   return (
-    <div ref={wrapRef} className="absolute inset-0">
-      {/* dim outside */}
-      <div className="pointer-events-none absolute inset-0 bg-black/35" />
+    <div
+      ref={wrapRef}
+      className="absolute inset-0 touch-none select-none"
+      style={{ touchAction: "none" }}
+    >
+      <div className="pointer-events-none absolute inset-0 bg-black/40" />
       <div
-        className="absolute cursor-move border-2 border-[var(--accent)] shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]"
+        className="absolute cursor-move border-2 border-[var(--accent)] shadow-[0_0_0_9999px_rgba(0,0,0,0.4)]"
         style={{
           left: `${(crop.x / imageWidth) * 100}%`,
           top: `${(crop.y / imageHeight) * 100}%`,
@@ -114,13 +115,24 @@ export function CropOverlay({
         onPointerUp={() => {
           dragRef.current = null;
         }}
+        onPointerCancel={() => {
+          dragRef.current = null;
+        }}
       >
+        {/* rule-of-thirds guides */}
+        <div className="pointer-events-none absolute inset-0 opacity-40">
+          <div className="absolute left-1/3 top-0 h-full w-px bg-white/70" />
+          <div className="absolute left-2/3 top-0 h-full w-px bg-white/70" />
+          <div className="absolute left-0 top-1/3 h-px w-full bg-white/70" />
+          <div className="absolute left-0 top-2/3 h-px w-full bg-white/70" />
+        </div>
+
         {HANDLES.map((handle) => (
           <button
             key={handle.id}
             type="button"
             aria-label={`Crop ${handle.id}`}
-            className="absolute h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-sm border border-[var(--ink)] bg-[var(--accent)]"
+            className="absolute z-10 flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center touch-none sm:h-8 sm:w-8"
             style={{
               left: `${handle.x * 100}%`,
               top: `${handle.y * 100}%`,
@@ -140,7 +152,13 @@ export function CropOverlay({
               e.stopPropagation();
               dragRef.current = null;
             }}
-          />
+            onPointerCancel={(e) => {
+              e.stopPropagation();
+              dragRef.current = null;
+            }}
+          >
+            <span className="h-4 w-4 rounded-sm border-2 border-[var(--ink)] bg-[var(--accent)] shadow sm:h-3.5 sm:w-3.5" />
+          </button>
         ))}
       </div>
     </div>

@@ -1,6 +1,8 @@
 "use client";
 
 import { BatchConvertPanel } from "@/components/editor/batch-convert-panel";
+import { MobileRotateBar } from "@/components/editor/mobile-rotate-bar";
+import { RecentProjectsPanel } from "@/components/editor/recent-projects";
 import { Slider } from "@/components/editor/slider";
 import { cn } from "@/lib/cn";
 import {
@@ -26,7 +28,8 @@ export type PanelId =
   | "resize"
   | "redeye"
   | "export"
-  | "convert";
+  | "convert"
+  | "projects";
 
 export const PANEL_IDS: PanelId[] = [
   "adjust",
@@ -38,6 +41,7 @@ export const PANEL_IDS: PanelId[] = [
   "redeye",
   "export",
   "convert",
+  "projects",
 ];
 
 type Props = {
@@ -83,6 +87,8 @@ type Props = {
   commitLayerOpacity: () => void;
   updateActiveText: (patch: Partial<TextLayer>, commit?: boolean) => void;
   deleteActiveLayer: () => void;
+  onOpenProject: (id: string) => void;
+  projectsRefreshKey: number;
   compact?: boolean;
 };
 
@@ -129,6 +135,8 @@ export function ToolPanel(props: Props) {
     commitLayerOpacity,
     updateActiveText,
     deleteActiveLayer,
+    onOpenProject,
+    projectsRefreshKey,
     compact,
   } = props;
 
@@ -202,7 +210,12 @@ export function ToolPanel(props: Props) {
             onChange={(saturation) => onAdjustments({ saturation })}
             onCommit={onCommitAdjustments}
           />
-          <div className="flex flex-wrap gap-2">
+          <MobileRotateBar
+            disabled={disabled}
+            adjustments={adjustments}
+            onAdjustments={onAdjustments}
+          />
+          <div className="hidden flex-wrap gap-2 lg:flex">
             <button
               type="button"
               disabled={disabled}
@@ -248,11 +261,11 @@ export function ToolPanel(props: Props) {
 
       {panel === "crop" ? (
         <div className="space-y-3 text-sm">
-          <p className="text-[var(--muted)]">
+          <p className="text-[var(--muted)] lg:block">
             Drag inside to move. Use corner/edge handles to reshape. Apply bakes
             the crop into the document.
           </p>
-          <div className="flex flex-wrap gap-1">
+          <div className="hidden flex-wrap gap-1 lg:flex">
             {CROP_ASPECTS.map((a) => (
               <button
                 key={a.id}
@@ -270,7 +283,7 @@ export function ToolPanel(props: Props) {
               </button>
             ))}
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="hidden flex-wrap gap-2 lg:flex">
             {!cropMode ? (
               <button
                 type="button"
@@ -302,6 +315,31 @@ export function ToolPanel(props: Props) {
               type="button"
               disabled={disabled}
               className="rounded-xl border border-[var(--line)] px-3 py-2 disabled:opacity-40"
+              onClick={resetCrop}
+            >
+              Clear crop
+            </button>
+          </div>
+          <div className="space-y-2 lg:hidden">
+            {!cropMode ? (
+              <button
+                type="button"
+                disabled={disabled}
+                className="min-h-12 w-full rounded-xl bg-[var(--ink)] px-3 text-sm text-[var(--paper)] disabled:opacity-40"
+                onClick={startCrop}
+              >
+                Start crop
+              </button>
+            ) : (
+              <p className="text-xs text-[var(--muted)]">
+                Use the bar above the tabs to apply, cancel, rotate, or lock
+                aspect.
+              </p>
+            )}
+            <button
+              type="button"
+              disabled={disabled}
+              className="min-h-11 w-full rounded-xl border border-[var(--line)] px-3 text-sm disabled:opacity-40"
               onClick={resetCrop}
             >
               Clear crop
@@ -579,6 +617,14 @@ export function ToolPanel(props: Props) {
       ) : null}
 
       {panel === "convert" ? <BatchConvertPanel compact={compact} /> : null}
+
+      {panel === "projects" ? (
+        <RecentProjectsPanel
+          compact={compact}
+          onOpen={onOpenProject}
+          refreshKey={projectsRefreshKey}
+        />
+      ) : null}
     </div>
   );
 }

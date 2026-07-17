@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { answerWithHeuristics } from "@/components/page-agent/heuristics";
 import { cn } from "@/lib/cn";
 
 type Message = { role: "user" | "assistant"; text: string };
@@ -12,7 +13,7 @@ export function PageAgent() {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
-      text: "Ask about layers, brush, text, crop, resize, red-eye, undo/redo, export, or offline use.",
+      text: "Ask about layers, projects, offline, convert, crop, or export.",
     },
   ]);
 
@@ -25,6 +26,17 @@ export function PageAgent() {
     setMessages((prev) => [...prev, { role: "user", text: question }]);
     setBusy(true);
 
+    const finish = (text: string) => {
+      setMessages((prev) => [...prev, { role: "assistant", text }]);
+      setBusy(false);
+    };
+
+    // Offline or failing network → local heuristics (no API needed)
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      finish(answerWithHeuristics(question).answer);
+      return;
+    }
+
     try {
       const res = await fetch("/api/page-agent", {
         method: "POST",
@@ -35,23 +47,9 @@ export function PageAgent() {
         }),
       });
       const data = (await res.json()) as { answer?: string; error?: string };
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          text: data.answer ?? data.error ?? "Something went wrong.",
-        },
-      ]);
+      finish(data.answer ?? data.error ?? "Something went wrong.");
     } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          text: "Could not reach help right now. Try again, or check Adjust / Export in the toolbar.",
-        },
-      ]);
-    } finally {
-      setBusy(false);
+      finish(answerWithHeuristics(question).answer);
     }
   }
 
@@ -96,7 +94,7 @@ export function PageAgent() {
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="How do I export WebP?"
+              placeholder="How do I save offline?"
               className="min-w-0 flex-1 rounded-xl border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2 text-sm text-[var(--ink)] outline-none ring-[var(--accent)] placeholder:text-[var(--muted)] focus:ring-2"
             />
             <button

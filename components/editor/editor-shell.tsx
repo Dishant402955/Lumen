@@ -10,6 +10,9 @@ import {
   useState,
 } from "react";
 import { CropOverlay } from "@/components/editor/crop-overlay";
+import { InstallPrompt } from "@/components/editor/install-prompt";
+import { MobileCropBar } from "@/components/editor/mobile-crop-bar";
+import { RecentProjectsPanel } from "@/components/editor/recent-projects";
 import {
   PANEL_IDS,
   PanelId,
@@ -53,9 +56,15 @@ import {
   redoHistory,
   undoHistory,
 } from "@/lib/history";
+import { blobToImage, persistProject } from "@/lib/offline/project-io";
+import { getProject, isIndexedDbAvailable } from "@/lib/offline/projects";
 import { PaintStore, loadImage } from "@/lib/paint-store";
 import { removeRedEye } from "@/lib/red-eye";
-import { registerServiceWorker } from "@/lib/register-sw";
+import {
+  activateWaitingWorker,
+  registerServiceWorker,
+  type SwStatus,
+} from "@/lib/register-sw";
 
 export function EditorShell() {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -99,10 +108,30 @@ export function EditorShell() {
   const [bgVersion, setBgVersion] = useState(0);
   const docRef = useRef<EditorDoc | null>(null);
   const exifRef = useRef<ExifPayload | null>(null);
+  const projectIdRef = useRef<string | null>(null);
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [projectsRefreshKey, setProjectsRefreshKey] = useState(0);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">(
+    "idle",
+  );
+  const [swStatus, setSwStatus] = useState<SwStatus>({
+    supported: false,
+    controlling: false,
+    waiting: false,
+    version: null,
+  });
 
   useEffect(() => {
     docRef.current = doc;
   }, [doc]);
+
+  useEffect(() => {
+    const unsub = registerServiceWorker(setSwStatus);
+    return () => {
+      unsub();
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    };
+  }, []);
 
   const syncHistoryFlags = useCallback(() => {
     const h = historyRef.current;
@@ -130,6 +159,53 @@ export function EditorShell() {
     [],
   );
 
+  const scheduleAutoSaveRef = useRef<() => void>(() => undefined);
+
+  const saveProjectNow = useCallback(
+    async (silent = false) => {
+      const current = docRef.current;
+      if (!current || !sourceImageRef.current) return;
+      if (!isIndexedDbAvailable()) {
+        if (!silent) {
+          setError("IndexedDB is not available in this browser.");
+        }
+        return;
+      }
+      setSaveState("saving");
+      try {
+        const saved = await persistProject({
+          id: projectIdRef.current ?? undefined,
+          name: image?.name ?? "Untitled",
+          doc: current,
+          background: getBackground(),
+          paintStore: paintStoreRef.current,
+        });
+        projectIdRef.current = saved.id;
+        setSaveState("saved");
+        setProjectsRefreshKey((k) => k + 1);
+        if (!silent) setError(null);
+      } catch (err) {
+        setSaveState("error");
+        if (!silent) {
+          setError(err instanceof Error ? err.message : "Save failed.");
+        }
+      }
+    },
+    [getBackground, image?.name],
+  );
+
+  useEffect(() => {
+    scheduleAutoSaveRef.current = () => {
+      if (!isIndexedDbAvailable() || !docRef.current || !sourceImageRef.current) {
+        return;
+      }
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = setTimeout(() => {
+        void saveProjectNow(true);
+      }, 1800);
+    };
+  }, [saveProjectNow]);
+
   const commitSnapshot = useCallback(
     (nextDoc: EditorDoc) => {
       const snap = captureSnapshot(nextDoc);
@@ -140,6 +216,7 @@ export function EditorShell() {
       }
       setDoc(nextDoc);
       syncHistoryFlags();
+      scheduleAutoSaveRef.current();
     },
     [captureSnapshot, syncHistoryFlags],
   );
@@ -193,7 +270,6 @@ export function EditorShell() {
   }, [restoreSnapshot, syncHistoryFlags]);
 
   useEffect(() => {
-    registerServiceWorker();
     const sync = () => setOnline(navigator.onLine);
     sync();
     window.addEventListener("online", sync);
@@ -259,6 +335,7 @@ export function EditorShell() {
     if (image?.objectUrl) URL.revokeObjectURL(image.objectUrl);
 
     try {
+      projectIdRef.current = null;
       exifRef.current = await readExif(file);
       const decoded = await decodeToImage(file);
       const img = decoded.image;
@@ -810,6 +887,80 @@ export function EditorShell() {
     if (lockAspect) setResizeW(Math.max(1, Math.round(n * aspectBase)));
   }
 
+  async function openProject(id: string) {
+    setError(null);
+    setSaveState("idle");
+    try {
+      const project = await getProject(id);
+      if (!project) {
+        setError("Saved project not found.");
+        return;
+      }
+
+      if (image?.objectUrl) URL.revokeObjectURL(image.objectUrl);
+
+      const bgImg = await blobToImage(project.background);
+      const bgCanvas = document.createElement("canvas");
+      bgCanvas.width = project.width;
+      bgCanvas.height = project.height;
+      bgCanvas.getContext("2d")?.drawImage(bgImg, 0, 0);
+      backgroundCanvasRef.current = bgCanvas;
+      sourceImageRef.current = bgImg;
+
+      paintStoreRef.current.clear();
+      for (const [layerId, blob] of Object.entries(project.paints)) {
+        const layerImg = await blobToImage(blob);
+        const canvas = paintStoreRef.current.ensure(
+          layerId,
+          project.width,
+          project.height,
+        );
+        canvas.getContext("2d")?.drawImage(layerImg, 0, 0);
+        const layerUrl = (
+          layerImg as HTMLImageElement & { __objectUrl?: string }
+        ).__objectUrl;
+        if (layerUrl) URL.revokeObjectURL(layerUrl);
+      }
+
+      const objectUrl =
+        (bgImg as HTMLImageElement & { __objectUrl?: string }).__objectUrl ??
+        URL.createObjectURL(project.background);
+
+      projectIdRef.current = project.id;
+      exifRef.current = null;
+
+      const nextDoc = cloneDoc(project.doc);
+      historyRef.current = initHistory({
+        doc: cloneDoc(nextDoc),
+        paintData: paintStoreRef.current.capture(
+          nextDoc.layers.filter((l) => l.kind === "paint").map((l) => l.id),
+        ),
+        backgroundDataUrl: bgCanvas.toDataURL("image/png"),
+      });
+
+      setImage({
+        name: project.name,
+        objectUrl,
+        width: project.width,
+        height: project.height,
+        fileType: "image/png",
+      });
+      setDoc(nextDoc);
+      setResizeW(project.width);
+      setResizeH(project.height);
+      setAspectBase(project.width / Math.max(1, project.height));
+      setCropMode(false);
+      setDraftCrop(null);
+      setTool("select");
+      setPanel("adjust");
+      setBgVersion((v) => v + 1);
+      setSaveState("saved");
+      syncHistoryFlags();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not open project.");
+    }
+  }
+
   const toolPanelProps = {
     panel,
     setPanel,
@@ -853,6 +1004,8 @@ export function EditorShell() {
     commitLayerOpacity,
     updateActiveText,
     deleteActiveLayer,
+    onOpenProject: (id: string) => void openProject(id),
+    projectsRefreshKey,
   };
 
   return (
@@ -865,9 +1018,20 @@ export function EditorShell() {
             Lumen
           </h1>
           <p className="mt-1 text-sm text-[var(--muted)]">
-            Layers, convert, brush, text ·{" "}
-            {tool !== "select" ? `Tool: ${tool}` : "Edit in the browser"}
-            {!online ? " · Offline" : ""}
+            {!online
+              ? "Offline"
+              : swStatus.controlling
+                ? "Offline-ready"
+                : "Edit in the browser"}
+            {swStatus.version ? ` · SW ${swStatus.version}` : ""}
+            {saveState === "saving"
+              ? " · Saving…"
+              : saveState === "saved"
+                ? " · Saved on device"
+                : saveState === "error"
+                  ? " · Save failed"
+                  : ""}
+            {tool !== "select" ? ` · Tool: ${tool}` : ""}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -878,6 +1042,16 @@ export function EditorShell() {
             className="hidden"
             onChange={onFileChange}
           />
+          {swStatus.waiting ? (
+            <button
+              type="button"
+              className="rounded-xl border border-[var(--line)] bg-[var(--panel)] px-3 py-2 text-sm"
+              onClick={() => void activateWaitingWorker()}
+            >
+              Update app
+            </button>
+          ) : null}
+          <InstallPrompt />
           <button
             type="button"
             disabled={!canUndo}
@@ -896,6 +1070,21 @@ export function EditorShell() {
           </button>
           <button
             type="button"
+            disabled={!doc || saveState === "saving"}
+            className="rounded-xl border border-[var(--line)] bg-[var(--panel)] px-3 py-2 text-sm disabled:opacity-40"
+            onClick={() => void saveProjectNow(false)}
+          >
+            Save project
+          </button>
+          <button
+            type="button"
+            className="rounded-xl border border-[var(--line)] bg-[var(--panel)] px-3 py-2 text-sm"
+            onClick={() => setPanel("projects")}
+          >
+            Projects
+          </button>
+          <button
+            type="button"
             className="rounded-xl bg-[var(--ink)] px-4 py-2 text-sm font-medium text-[var(--paper)]"
             onClick={() => fileInputRef.current?.click()}
           >
@@ -904,7 +1093,7 @@ export function EditorShell() {
         </div>
       </header>
 
-      <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4 p-4 pb-36 sm:p-6 lg:grid lg:grid-cols-[1fr_320px] lg:pb-6">
+      <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4 p-4 pb-[calc(7.5rem+env(safe-area-inset-bottom))] sm:p-6 lg:grid lg:grid-cols-[1fr_320px] lg:pb-6">
         <section
           className={cn(
             "flex min-h-[280px] flex-1 flex-col overflow-hidden rounded-3xl border border-[var(--line)] bg-[var(--panel)]/80 backdrop-blur-sm transition",
@@ -918,26 +1107,40 @@ export function EditorShell() {
           onDrop={onDrop}
         >
           {!image || !doc ? (
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-16 text-center"
-            >
-              <span className="font-[family-name:var(--font-display)] text-2xl text-[var(--ink)]">
-                Drop an image here
-              </span>
-              <span className="max-w-sm text-sm text-[var(--muted)]">
-                Then paint, add text, crop with aspect locks, resize by pixels,
-                fix red-eye, and export — with full undo/redo.
-              </span>
-            </button>
+            <div className="flex flex-1 flex-col gap-6 overflow-auto p-4 sm:p-6">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-[var(--line)] px-6 py-12 text-center"
+              >
+                <span className="font-[family-name:var(--font-display)] text-2xl text-[var(--ink)]">
+                  Drop an image here
+                </span>
+                <span className="max-w-sm text-sm text-[var(--muted)]">
+                  Edit offline after the first visit. Projects auto-save to this
+                  device.
+                </span>
+              </button>
+              <RecentProjectsPanel
+                onOpen={(id) => void openProject(id)}
+                refreshKey={projectsRefreshKey}
+              />
+            </div>
           ) : (
-            <div className="flex flex-1 items-center justify-center overflow-auto p-3 sm:p-6">
+            <div
+              className={cn(
+                "flex flex-1 items-center justify-center overflow-auto p-3 sm:p-6",
+                cropMode && "pb-2 lg:pb-6",
+              )}
+            >
               <div ref={stageRef} className="relative max-h-full max-w-full">
                 <canvas
                   ref={previewCanvasRef}
                   className={cn(
-                    "max-h-[min(70vh,720px)] max-w-full touch-none rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.25)]",
+                    "max-w-full touch-none rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.25)]",
+                    cropMode
+                      ? "max-h-[min(48vh,560px)] sm:max-h-[min(60vh,720px)]"
+                      : "max-h-[min(62vh,720px)] sm:max-h-[min(70vh,720px)]",
                     tool === "brush" && "cursor-crosshair",
                     tool === "redeye" && "cursor-cell",
                     (tool === "text" || tool === "select") && "cursor-move",
@@ -977,8 +1180,26 @@ export function EditorShell() {
         </aside>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-[var(--line)] bg-[var(--panel)]/95 backdrop-blur-md lg:hidden">
-        <div className="flex gap-1 overflow-x-auto p-2">
+      <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-[var(--line)] bg-[var(--panel)]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden">
+        {cropMode ? (
+          <MobileCropBar
+            cropAspect={cropAspect}
+            setCropAspect={setCropAspect}
+            onApply={applyCrop}
+            onCancel={cancelCrop}
+            onRotate={() => {
+              if (!doc) return;
+              onAdjustments(
+                {
+                  rotate: (((doc.adjustments.rotate + 90) %
+                    360) as typeof doc.adjustments.rotate),
+                },
+                true,
+              );
+            }}
+          />
+        ) : null}
+        <div className="flex gap-1 overflow-x-auto px-2 pt-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {PANEL_IDS.map((id) => (
             <button
               key={id}
@@ -991,17 +1212,22 @@ export function EditorShell() {
                 if (id === "redeye") setTool("redeye");
               }}
               className={cn(
-                "shrink-0 rounded-xl px-3 py-2 text-xs capitalize",
+                "min-h-11 shrink-0 rounded-xl px-3 py-2 text-xs capitalize",
                 panel === id
                   ? "bg-[var(--ink)] text-[var(--paper)]"
                   : "text-[var(--muted)]",
               )}
             >
-              {id}
+              {id === "redeye" ? "Red-eye" : id}
             </button>
           ))}
         </div>
-        <div className="max-h-[38vh] overflow-y-auto px-3 pb-3">
+        <div
+          className={cn(
+            "overflow-y-auto px-3 pb-3",
+            cropMode ? "max-h-[22vh]" : "max-h-[34vh]",
+          )}
+        >
           <ToolPanel {...toolPanelProps} compact />
         </div>
       </nav>

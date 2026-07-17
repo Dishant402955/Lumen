@@ -10,6 +10,8 @@ Lumen is a web-only image editor. There is no desktop app and no monorepo — ju
 4. **Undo / Redo** — history stack with keyboard shortcuts.
 5. **Export** — PNG, JPEG, WebP, AVIF, HEIC with optional EXIF keep.
 6. **Batch convert** — Convert panel: many files → one format → ZIP download. See [Format conversion](./conversion.md).
+7. **Offline** — service worker caches the app; **Recent projects** store edits in IndexedDB on this device. See [Offline support](./offline.md).
+8. **Mobile / PWA** — install icons, Install button, touch-friendly crop & rotate. See [Mobile & PWA](./mobile.md).
 
 ## Mobile
 

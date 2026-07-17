@@ -70,9 +70,9 @@ const RULES: Array<{ patterns: RegExp[]; answer: string }> = [
       "Open Adjust and drag Brightness, Contrast, or Saturation. Releasing a slider commits that change to undo history.",
   },
   {
-    patterns: [/offline|service worker|no internet|airplane/i],
+    patterns: [/offline|service worker|no internet|airplane|indexeddb|recent project|save project|saved project/i],
     answer:
-      "After the first visit, Lumen’s app shell is cached by a service worker. You can open the editor offline and keep editing images already loaded in the tab.",
+      "After the first visit, a service worker caches the app (Offline-ready in the header). Edits auto-save to IndexedDB as Recent projects — use Save project or open them from the Projects panel, even offline. Page Agent LLM needs the network; local heuristics still work.",
   },
   {
     patterns: [/reset|clear|start over/i],
@@ -80,9 +80,9 @@ const RULES: Array<{ patterns: RegExp[]; answer: string }> = [
       "Reset adjustments clears color/rotate/flip. Clear crop removes an unapplied crop. Open a new image to replace the project. Prefer Undo for stepping back.",
   },
   {
-    patterns: [/mobile|phone|touch|small screen/i],
+    patterns: [/mobile|phone|touch|small screen|install|pwa|home screen|icon/i],
     answer:
-      "On small screens the tool panels become bottom tabs (Adjust, Crop, Brush, Text, Layers, Resize, Redeye, Export). The canvas stays above.",
+      "On phones, tools sit in the bottom tabs with safe-area padding. Crop uses a sticky bar (Apply/Cancel/Rotate + aspects) and large handles. Adjust has big Rotate/Flip buttons. Install via the Install app button (Chromium) or Add to Home Screen — icons are in the web manifest.",
   },
   {
     patterns: [/privacy|upload|server|cloud|data/i],
