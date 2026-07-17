@@ -26,4 +26,5 @@ Pixels are processed in your tab. The optional Page Agent sends only help-questi
 - [Editing depth](./editing.md)
 - [Format conversion](./conversion.md)
 - [Offline support](./offline.md)
-- [Page Agent](./page-agent.md)
+- [Mobile & PWA](./mobile.md)
+- [Page Agent](./page-agent.md) — highlight + click-to-explain help

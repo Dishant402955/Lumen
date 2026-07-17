@@ -157,6 +157,8 @@ export function ToolPanel(props: Props) {
             <button
               key={id}
               type="button"
+              data-lumen-id={`panel-${id}`}
+              data-lumen-label={id === "redeye" ? "Red-eye" : id}
               onClick={() => {
                 setPanel(id);
                 if (id === "crop") startCrop();

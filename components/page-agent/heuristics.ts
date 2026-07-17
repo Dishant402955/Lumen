@@ -1,98 +1,145 @@
+import { getTarget, targetsForQuestion } from "@/components/page-agent/targets";
+
 export type HeuristicReply = {
   answer: string;
   matched: boolean;
+  targets: string[];
+  panel?: string;
 };
 
-const RULES: Array<{ patterns: RegExp[]; answer: string }> = [
+const RULES: Array<{
+  patterns: RegExp[];
+  answer: string;
+  targets?: string[];
+  panel?: string;
+}> = [
   {
-    patterns: [/how (do i |to )?open|upload|import|add (an )?image|load/i],
+    patterns: [/how (do i |to )?open|upload|import|add (an )?image|load|drop/i],
     answer:
-      "Use Open image in the top bar, or drag and drop a file onto the canvas. Your image stays in this browser — nothing is uploaded to a server.",
+      "Use Open image in the top bar, or drag and drop onto the canvas. HEIC works too — files stay in this browser.",
+    targets: ["open-image", "canvas"],
   },
   {
     patterns: [/undo|redo|history|ctrl\+z|cmd\+z/i],
     answer:
-      "Use Undo / Redo in the top bar, or Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z (or Ctrl+Y). Brush strokes, crops, resize, red-eye, layer changes, and committed adjustments are all in the history stack.",
+      "Use Undo / Redo in the top bar, or Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z (or Ctrl+Y).",
+    targets: ["undo", "redo"],
   },
   {
     patterns: [/layer/i],
     answer:
-      "Open the Layers panel to show/hide layers, change opacity, add paint or text layers, or delete the active non-background layer. Brush draws on the active paint layer.",
+      "Open Layers to show/hide, change opacity, add paint or text, or delete the active non-background layer.",
+    targets: ["panel-layers"],
+    panel: "layers",
   },
   {
     patterns: [/brush|paint|draw/i],
     answer:
-      "Open Brush, pick color/size/opacity (soft optional), select a paint layer, then draw on the canvas. Each stroke is one undo step.",
+      "Open Brush, pick color/size/opacity, select a paint layer, then draw on the canvas.",
+    targets: ["panel-brush", "canvas"],
+    panel: "brush",
   },
   {
     patterns: [/text|type|caption|label/i],
     answer:
-      "Open Text → Add text layer. Edit content, size, and color in the panel; drag on the canvas to move. Text lives on its own layer.",
+      "Open Text → Add text layer. Edit in the panel; drag on the canvas to move.",
+    targets: ["panel-text", "canvas"],
+    panel: "text",
   },
   {
     patterns: [/resize|dimension|pixels|width|height/i],
     answer:
-      "Open Resize, set width and height in pixels (optionally lock aspect), then Apply resize. Background and paint layers are resampled; text positions scale too.",
+      "Open Resize, set width/height (optional aspect lock), then Apply resize.",
+    targets: ["panel-resize"],
+    panel: "resize",
   },
   {
     patterns: [/red[- ]?eye|redeye|pupil/i],
     answer:
-      "Open Redeye, set the radius, then click the red pupil on the image. The fix is baked into the background and can be undone.",
+      "Open Red-eye, set the radius, then click the pupil on the canvas.",
+    targets: ["panel-redeye", "canvas"],
+    panel: "redeye",
   },
   {
     patterns: [/batch|convert many|bulk|zip|multiple files/i],
     answer:
-      "Open the Convert panel, add multiple images (HEIC works too), pick PNG/JPEG/WebP/AVIF/HEIC, optionally keep EXIF, then Convert all. Download ZIP packs every successful file.",
+      "Open Convert, add images, pick a format, Convert all, then Download ZIP if you want.",
+    targets: ["panel-convert"],
+    panel: "convert",
   },
   {
     patterns: [/avif|heic|heif|exif|metadata|format conversion/i],
     answer:
-      "Export and Convert support PNG, JPEG, WebP, AVIF, and HEIC. Keep EXIF is full for JPEG and best-effort for PNG/WebP/HEIC. AVIF uses the browser or a WASM encoder. HEIC input is decoded; HEIC output is a JPEG-in-HEIF file.",
+      "Export and Convert support PNG, JPEG, WebP, AVIF, and HEIC. Keep EXIF is strongest on JPEG.",
+    targets: ["panel-export", "panel-convert"],
+    panel: "export",
   },
   {
-    patterns: [/export|download|save|convert|webp|jpeg|jpg|png|format/i],
+    patterns: [/export|download|save as|format/i],
     answer:
-      "Use Export for the current edit, or Convert for batch. Pick a format, set quality, toggle Keep EXIF, then Download (or ZIP in Convert).",
+      "Open Export for the current edit — pick format, quality, Keep EXIF, then Download.",
+    targets: ["panel-export"],
+    panel: "export",
   },
   {
     patterns: [/crop|aspect/i],
     answer:
-      "Open Crop, pick an aspect (Free, 1:1, 4:3, 3:2, 16:9, 9:16), drag the box or reshape with corner/edge handles, then Apply crop to bake it into the document.",
+      "Open Crop, pick an aspect, drag/reshape the box, then Apply. On mobile use the sticky crop bar.",
+    targets: ["panel-crop", "canvas"],
+    panel: "crop",
   },
   {
     patterns: [/rotate|flip|turn/i],
     answer:
-      "In Adjust, use Rotate 90° or Flip H / Flip V. Changes go into undo history.",
+      "In Adjust, use Rotate 90° or Flip H / Flip V (large buttons on mobile).",
+    targets: ["panel-adjust"],
+    panel: "adjust",
   },
   {
     patterns: [/bright|contrast|saturat|adjust|filter/i],
     answer:
-      "Open Adjust and drag Brightness, Contrast, or Saturation. Releasing a slider commits that change to undo history.",
+      "Open Adjust and drag Brightness, Contrast, or Saturation. Releasing a slider commits undo history.",
+    targets: ["panel-adjust"],
+    panel: "adjust",
   },
   {
-    patterns: [/offline|service worker|no internet|airplane|indexeddb|recent project|save project|saved project/i],
+    patterns: [
+      /offline|service worker|no internet|airplane|indexeddb|recent project|save project|saved project/i,
+    ],
     answer:
-      "After the first visit, a service worker caches the app (Offline-ready in the header). Edits auto-save to IndexedDB as Recent projects — use Save project or open them from the Projects panel, even offline. Page Agent LLM needs the network; local heuristics still work.",
+      "After the first visit you’re Offline-ready. Save project (or auto-save) stores edits in IndexedDB — reopen from Projects offline. Help still works with local heuristics when offline.",
+    targets: ["save-project", "projects", "panel-projects"],
+    panel: "projects",
   },
   {
     patterns: [/reset|clear|start over/i],
     answer:
-      "Reset adjustments clears color/rotate/flip. Clear crop removes an unapplied crop. Open a new image to replace the project. Prefer Undo for stepping back.",
+      "Reset adjustments clears color/rotate/flip. Prefer Undo to step back. Open a new image to replace the project.",
+    targets: ["panel-adjust", "undo"],
   },
   {
     patterns: [/mobile|phone|touch|small screen|install|pwa|home screen|icon/i],
     answer:
-      "On phones, tools sit in the bottom tabs with safe-area padding. Crop uses a sticky bar (Apply/Cancel/Rotate + aspects) and large handles. Adjust has big Rotate/Flip buttons. Install via the Install app button (Chromium) or Add to Home Screen — icons are in the web manifest.",
+      "Bottom tabs + safe-area padding. Crop has a sticky bar and large handles. Use Install app (Chromium) or Add to Home Screen.",
+    targets: ["install", "panel-crop"],
   },
   {
     patterns: [/privacy|upload|server|cloud|data/i],
     answer:
-      "Editing runs entirely in your browser with the Canvas API. Images are not sent to Lumen servers. The optional Page Agent chat only sends your question text to an LLM if PAGE_AGENT_API_KEY is set on the server.",
+      "Editing stays in your tab. Page Agent only sends question text to an LLM if PAGE_AGENT_API_KEY is set — never your image pixels.",
+    targets: ["help-fab"],
+  },
+  {
+    patterns: [/point|click to explain|inspect|highlight|what is this/i],
+    answer:
+      "Turn on Point at UI in Help, then tap any highlighted control. I’ll explain it and spotlight it.",
+    targets: ["help-fab"],
   },
   {
     patterns: [/help|what can|how does lumen|features/i],
     answer:
-      "Lumen is an offline-friendly image editor and converter: layers, brush, text, crop, resize, red-eye, undo/redo, export/batch convert (PNG/JPEG/WebP/AVIF/HEIC + EXIF), and offline shell. Ask about any of those.",
+      "Lumen edits and converts images offline-first: layers, brush, text, crop, resize, red-eye, projects, batch convert, and PWA install. Ask about a tool, or use Point at UI.",
+    targets: ["help-fab", "open-image"],
   },
 ];
 
@@ -102,19 +149,53 @@ export function answerWithHeuristics(question: string): HeuristicReply {
     return {
       matched: true,
       answer:
-        "Ask about layers, brush, text, crop, resize, red-eye, undo/redo, export, or offline use.",
+        "Ask about a tool, or enable Point at UI and click a control. I can also highlight the matching UI.",
+      targets: ["help-fab"],
     };
   }
 
   for (const rule of RULES) {
     if (rule.patterns.some((p) => p.test(q))) {
-      return { matched: true, answer: rule.answer };
+      const targets = rule.targets?.length
+        ? rule.targets
+        : targetsForQuestion(q);
+      return {
+        matched: true,
+        answer: rule.answer,
+        targets,
+        panel: rule.panel,
+      };
     }
   }
 
+  const targets = targetsForQuestion(q);
+  const labeled = targets
+    .map((id) => getTarget(id)?.label)
+    .filter(Boolean)
+    .join(", ");
+
   return {
     matched: false,
-    answer:
-      "I can help with layers, brush, text, crop, resize, red-eye, adjustments, undo/redo, export/convert, offline use, and privacy. Try asking about one of those.",
+    answer: labeled
+      ? `I’m not sure — try asking about ${labeled}, or use Point at UI and click a control.`
+      : "Try asking about crop, export, projects, or enable Point at UI and click a control.",
+    targets,
+  };
+}
+
+export function explainTargetId(id: string): HeuristicReply {
+  const target = getTarget(id);
+  if (!target) {
+    return {
+      matched: false,
+      answer: "That control isn’t in the help map yet. Try asking in the chat.",
+      targets: [],
+    };
+  }
+  return {
+    matched: true,
+    answer: `${target.label}: ${target.explain}`,
+    targets: [target.id],
+    panel: target.panel,
   };
 }

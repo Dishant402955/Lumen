@@ -281,6 +281,20 @@ export function EditorShell() {
   }, []);
 
   useEffect(() => {
+    function onGoto(event: Event) {
+      const panel = (event as CustomEvent<{ panel?: string }>).detail?.panel;
+      if (!panel) return;
+      setPanel(panel as PanelId);
+      if (panel === "crop") startCrop();
+      if (panel === "brush") setTool("brush");
+      if (panel === "text") setTool("text");
+      if (panel === "redeye") setTool("redeye");
+    }
+    window.addEventListener("lumen:goto-panel", onGoto);
+    return () => window.removeEventListener("lumen:goto-panel", onGoto);
+  }, []);
+
+  useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const mod = e.metaKey || e.ctrlKey;
       if (!mod) return;
@@ -408,6 +422,11 @@ export function EditorShell() {
     });
   }
 
+  const cropAspectRef = useRef(cropAspect);
+  useEffect(() => {
+    cropAspectRef.current = cropAspect;
+  }, [cropAspect]);
+
   function onCommitAdjustments() {
     const current = docRef.current;
     if (!current) return;
@@ -415,23 +434,27 @@ export function EditorShell() {
   }
 
   function startCrop() {
-    if (!doc) return;
+    const current = docRef.current;
+    if (!current) return;
+    const aspect = cropAspectRef.current;
     setPanel("crop");
     setTool("crop");
     setCropMode(true);
     const base =
-      doc.crop ??
+      current.crop ??
       clampCrop(
         {
-          x: Math.round(doc.width * 0.1),
-          y: Math.round(doc.height * 0.1),
-          w: Math.round(doc.width * 0.8),
-          h: Math.round(doc.height * 0.8),
+          x: Math.round(current.width * 0.1),
+          y: Math.round(current.height * 0.1),
+          w: Math.round(current.width * 0.8),
+          h: Math.round(current.height * 0.8),
         },
-        doc.width,
-        doc.height,
+        current.width,
+        current.height,
       );
-    setDraftCrop(applyAspectToCrop(base, cropAspect, doc.width, doc.height));
+    setDraftCrop(
+      applyAspectToCrop(base, aspect, current.width, current.height),
+    );
   }
 
   useEffect(() => {
@@ -1054,6 +1077,8 @@ export function EditorShell() {
           <InstallPrompt />
           <button
             type="button"
+            data-lumen-id="undo"
+            data-lumen-label="Undo"
             disabled={!canUndo}
             className="rounded-xl border border-[var(--line)] bg-[var(--panel)] px-3 py-2 text-sm disabled:opacity-40"
             onClick={() => void undo()}
@@ -1062,6 +1087,8 @@ export function EditorShell() {
           </button>
           <button
             type="button"
+            data-lumen-id="redo"
+            data-lumen-label="Redo"
             disabled={!canRedo}
             className="rounded-xl border border-[var(--line)] bg-[var(--panel)] px-3 py-2 text-sm disabled:opacity-40"
             onClick={() => void redo()}
@@ -1070,6 +1097,8 @@ export function EditorShell() {
           </button>
           <button
             type="button"
+            data-lumen-id="save-project"
+            data-lumen-label="Save project"
             disabled={!doc || saveState === "saving"}
             className="rounded-xl border border-[var(--line)] bg-[var(--panel)] px-3 py-2 text-sm disabled:opacity-40"
             onClick={() => void saveProjectNow(false)}
@@ -1078,6 +1107,8 @@ export function EditorShell() {
           </button>
           <button
             type="button"
+            data-lumen-id="projects"
+            data-lumen-label="Projects"
             className="rounded-xl border border-[var(--line)] bg-[var(--panel)] px-3 py-2 text-sm"
             onClick={() => setPanel("projects")}
           >
@@ -1085,6 +1116,8 @@ export function EditorShell() {
           </button>
           <button
             type="button"
+            data-lumen-id="open-image"
+            data-lumen-label="Open image"
             className="rounded-xl bg-[var(--ink)] px-4 py-2 text-sm font-medium text-[var(--paper)]"
             onClick={() => fileInputRef.current?.click()}
           >
@@ -1133,7 +1166,12 @@ export function EditorShell() {
                 cropMode && "pb-2 lg:pb-6",
               )}
             >
-              <div ref={stageRef} className="relative max-h-full max-w-full">
+              <div
+                ref={stageRef}
+                data-lumen-id="canvas"
+                data-lumen-label="Canvas"
+                className="relative max-h-full max-w-full"
+              >
                 <canvas
                   ref={previewCanvasRef}
                   className={cn(
@@ -1204,6 +1242,8 @@ export function EditorShell() {
             <button
               key={id}
               type="button"
+              data-lumen-id={`panel-${id}`}
+              data-lumen-label={id === "redeye" ? "Red-eye" : id}
               onClick={() => {
                 setPanel(id);
                 if (id === "crop") startCrop();
