@@ -63,3 +63,9 @@ Also:
 - **Clear selection** — clears alpha inside the marquee on the **active paint layer**
 - **Deselect** — clears the marquee without editing pixels
 - Size and strength sliders apply to heal/clone brushes
+
+## See also
+
+- [Architecture](./architecture.md) — compose + pointer mapping
+- [Code map](./code-map.md) — editor files
+- [Developer guide](./developer-guide.md) — how to add a tool

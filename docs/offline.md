@@ -50,3 +50,9 @@ Delete individual projects or **Clear all** from the Projects panel.
 - First visit must succeed online so the service worker can install and precache the shell
 - Very large projects are limited by browser IndexedDB quota
 - Cross-origin assets are not cached
+
+## See also
+
+- [Architecture](./architecture.md) — offline section
+- [Code map](./code-map.md) — `lib/offline/*`, `public/sw.js`
+- [Developer guide](./developer-guide.md) — SW debugging

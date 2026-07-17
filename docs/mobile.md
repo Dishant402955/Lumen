@@ -26,3 +26,8 @@ Lumen is installable and usable on phones.
 1. Visit once online so the SW + icons install
 2. Use browser “Add to Home Screen” / Install if the in-app button doesn’t appear (Safari)
 3. Crop on mobile: start Crop tab → reshape with handles → Apply in the crop bar
+
+## See also
+
+- [UI & design system](./ui-design-system.md)
+- [Offline support](./offline.md) — SW install for PWA

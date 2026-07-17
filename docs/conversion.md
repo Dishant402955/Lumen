@@ -37,3 +37,9 @@ Open the **Convert** panel:
 ## Privacy
 
 Conversion never uploads your images. Batch results and ZIPs are generated locally.
+
+## See also
+
+- [Feature inventory](./feature-inventory.md) — known format limits
+- [Developer guide](./developer-guide.md) — how to add a format
+- [Code map](./code-map.md) — `lib/convert/*`

@@ -36,3 +36,8 @@ PAGE_AGENT_MODEL=gpt-4o-mini
 ```
 
 No key is required. Images are never sent to the LLM — only the question text.
+
+## See also
+
+- [Code map](./code-map.md) — `components/page-agent/*`
+- [Developer guide](./developer-guide.md) — registering new help targets

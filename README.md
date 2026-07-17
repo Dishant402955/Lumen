@@ -1,6 +1,6 @@
 # Lumen
 
-In-browser image editor and converter: layers (reorder/clone), brush, text rotation, crop, resize, red-eye, retouch (marquee/heal/clone), undo/redo, batch convert, offline projects, and **installable PWA** (icons + touch-friendly crop/rotate). Editing stays on your device.
+In-browser image editor and converter: layers (reorder/clone), brush, text rotation, crop, resize, red-eye, retouch (marquee/heal/clone), undo/redo, batch convert, offline projects, and **installable PWA**. Editing stays on your device.
 
 This is a **single Next.js app** (not a monorepo).
 
@@ -25,14 +25,23 @@ If pnpm asks about build scripts for `sharp` / `unrs-resolver`, approve them (or
 | `pnpm start`   | Run production build |
 | `pnpm lint`    | ESLint               |
 
-## Docs
+## Documentation (start here to take over)
 
-- [Handbook](docs/handbook.md) — product overview
-- [Editing depth](docs/editing.md) — layers, history, retouch, tools
-- [Format conversion](docs/conversion.md) — batch, AVIF/HEIC, EXIF
-- [Offline](docs/offline.md) — service worker + recent projects
-- [Mobile & PWA](docs/mobile.md) — icons, install, touch crop/rotate
-- [Page Agent](docs/page-agent.md) — in-app UI help
+**[docs/README.md](docs/README.md)** — index and reading order for humans continuing the project without AI.
+
+| Doc | Purpose |
+| --- | --- |
+| [Developer guide](docs/developer-guide.md) | Run, conventions, how to add features, debug table |
+| [Architecture](docs/architecture.md) | Document model, compose, history, offline |
+| [Code map](docs/code-map.md) | File → responsibility |
+| [Feature inventory](docs/feature-inventory.md) | Shipped vs limits vs out of scope |
+| [UI & design system](docs/ui-design-system.md) | Tokens and shared CSS classes |
+| [Handbook](docs/handbook.md) | Product overview |
+| [Editing depth](docs/editing.md) | Layers, tools, retouch |
+| [Format conversion](docs/conversion.md) | Export / batch / HEIC / EXIF |
+| [Offline](docs/offline.md) | Service worker + projects |
+| [Mobile & PWA](docs/mobile.md) | Install, touch UX |
+| [Page Agent](docs/page-agent.md) | In-app help |
 
 ## Stack
 
