@@ -10,39 +10,69 @@ const RULES: Array<{ patterns: RegExp[]; answer: string }> = [
       "Use Open image in the top bar, or drag and drop a file onto the canvas. Your image stays in this browser — nothing is uploaded to a server.",
   },
   {
-    patterns: [/export|download|save|convert|webp|jpeg|jpg|png|format/i],
+    patterns: [/undo|redo|history|ctrl\+z|cmd\+z/i],
     answer:
-      "Open Export on the right (or the Export tab on mobile). Pick PNG, JPEG, or WebP, set quality for JPEG/WebP, then tap Download. That’s how you convert formats too.",
+      "Use Undo / Redo in the top bar, or Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z (or Ctrl+Y). Brush strokes, crops, resize, red-eye, layer changes, and committed adjustments are all in the history stack.",
   },
   {
-    patterns: [/crop/i],
+    patterns: [/layer/i],
     answer:
-      "Tap Crop, drag the handles on the image, then Apply crop. Reset crop clears the crop box without changing brightness or rotation.",
+      "Open the Layers panel to show/hide layers, change opacity, add paint or text layers, or delete the active non-background layer. Brush draws on the active paint layer.",
+  },
+  {
+    patterns: [/brush|paint|draw/i],
+    answer:
+      "Open Brush, pick color/size/opacity (soft optional), select a paint layer, then draw on the canvas. Each stroke is one undo step.",
+  },
+  {
+    patterns: [/text|type|caption|label/i],
+    answer:
+      "Open Text → Add text layer. Edit content, size, and color in the panel; drag on the canvas to move. Text lives on its own layer.",
+  },
+  {
+    patterns: [/resize|dimension|pixels|width|height/i],
+    answer:
+      "Open Resize, set width and height in pixels (optionally lock aspect), then Apply resize. Background and paint layers are resampled; text positions scale too.",
+  },
+  {
+    patterns: [/red[- ]?eye|redeye|pupil/i],
+    answer:
+      "Open Redeye, set the radius, then click the red pupil on the image. The fix is baked into the background and can be undone.",
+  },
+  {
+    patterns: [/export|download|save|convert|webp|jpeg|jpg|png|format/i],
+    answer:
+      "Open Export. Pick PNG, JPEG, or WebP, set quality for JPEG/WebP, then tap Download. That’s how you convert formats too.",
+  },
+  {
+    patterns: [/crop|aspect/i],
+    answer:
+      "Open Crop, pick an aspect (Free, 1:1, 4:3, 3:2, 16:9, 9:16), drag the box or reshape with corner/edge handles, then Apply crop to bake it into the document.",
   },
   {
     patterns: [/rotate|flip|turn/i],
     answer:
-      "In Adjust, use Rotate 90° or Flip horizontal / Flip vertical. Rotation and flips apply when you export.",
+      "In Adjust, use Rotate 90° or Flip H / Flip V. Changes go into undo history.",
   },
   {
     patterns: [/bright|contrast|saturat|adjust|filter/i],
     answer:
-      "Open Adjust and drag Brightness, Contrast, or Saturation. Values are previewed live and baked into the export.",
+      "Open Adjust and drag Brightness, Contrast, or Saturation. Releasing a slider commits that change to undo history.",
   },
   {
     patterns: [/offline|service worker|no internet|airplane/i],
     answer:
-      "After the first visit, Lumen’s app shell is cached by a service worker. You can open the editor offline and keep editing images already loaded in the tab. Opening a new file from disk still works offline; AI help needs the network only if an API key is configured.",
+      "After the first visit, Lumen’s app shell is cached by a service worker. You can open the editor offline and keep editing images already loaded in the tab.",
   },
   {
-    patterns: [/reset|undo|clear|start over/i],
+    patterns: [/reset|clear|start over/i],
     answer:
-      "Use Reset adjustments to clear brightness/contrast/saturation/rotation/flips. Reset crop only clears the crop. Open a new image to replace the current one.",
+      "Reset adjustments clears color/rotate/flip. Clear crop removes an unapplied crop. Open a new image to replace the project. Prefer Undo for stepping back.",
   },
   {
     patterns: [/mobile|phone|touch|small screen/i],
     answer:
-      "On small screens the side panels become bottom tabs: Adjust, Crop, and Export. The canvas stays full width above the controls.",
+      "On small screens the tool panels become bottom tabs (Adjust, Crop, Brush, Text, Layers, Resize, Redeye, Export). The canvas stays above.",
   },
   {
     patterns: [/privacy|upload|server|cloud|data/i],
@@ -52,7 +82,7 @@ const RULES: Array<{ patterns: RegExp[]; answer: string }> = [
   {
     patterns: [/help|what can|how does lumen|features/i],
     answer:
-      "Lumen is an offline-friendly image editor: open or drop an image, adjust light and color, crop, rotate/flip, then export as PNG, JPEG, or WebP. Ask me about any of those steps.",
+      "Lumen is an offline-friendly image editor with layers, brush, text, crop (aspect locks), pixel resize, red-eye, adjustments, undo/redo, and PNG/JPEG/WebP export. Ask about any of those.",
   },
 ];
 
@@ -61,7 +91,8 @@ export function answerWithHeuristics(question: string): HeuristicReply {
   if (!q) {
     return {
       matched: true,
-      answer: "Ask how to open, crop, adjust, export, or use Lumen offline.",
+      answer:
+        "Ask about layers, brush, text, crop, resize, red-eye, undo/redo, export, or offline use.",
     };
   }
 
@@ -74,6 +105,6 @@ export function answerWithHeuristics(question: string): HeuristicReply {
   return {
     matched: false,
     answer:
-      "I can help with opening images, adjustments, crop, rotate/flip, export/convert, offline use, and privacy. Try asking about one of those.",
+      "I can help with layers, brush, text, crop, resize, red-eye, adjustments, undo/redo, export/convert, offline use, and privacy. Try asking about one of those.",
   };
 }

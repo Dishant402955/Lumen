@@ -12,7 +12,7 @@ export function PageAgent() {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
-      text: "Ask how to open an image, crop, adjust color, export formats, or use Lumen offline.",
+      text: "Ask about layers, brush, text, crop, resize, red-eye, undo/redo, export, or offline use.",
     },
   ]);
 

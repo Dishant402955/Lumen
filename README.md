@@ -1,6 +1,6 @@
 # Lumen
 
-In-browser image editor: open a file, adjust color, crop, rotate/flip, and export as PNG, JPEG, or WebP. Editing stays on your device. After the first visit, a service worker caches the app shell so the UI works offline.
+In-browser image editor with layers, brush, text, crop (aspect locks), pixel resize, red-eye, adjustments, undo/redo, and PNG/JPEG/WebP export. Editing stays on your device. After the first visit, a service worker caches the app shell so the UI works offline.
 
 This is a **single Next.js app** (not a monorepo).
 
@@ -28,6 +28,7 @@ If pnpm asks about build scripts for `sharp` / `unrs-resolver`, approve them (or
 ## Docs
 
 - [Handbook](docs/handbook.md) — product overview and workflow
+- [Editing depth](docs/editing.md) — layers, history, crop, resize, red-eye
 - [Offline](docs/offline.md) — service worker behavior
 - [Page Agent](docs/page-agent.md) — in-app UI help
 

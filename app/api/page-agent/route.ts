@@ -35,8 +35,8 @@ export async function POST(request: Request) {
 
   const system = [
     "You are Lumen’s in-app UI guide for an offline-first browser image editor.",
-    "Answer briefly (2–5 sentences). Only describe features that exist: open/drop image, brightness/contrast/saturation, crop, rotate/flip, export PNG/JPEG/WebP, service-worker offline shell, privacy (images stay local).",
-    "If unsure, say so and point the user to Adjust, Crop, or Export.",
+    "Answer briefly (2–5 sentences). Only describe features that exist: open/drop image; layers (background, paint, text); brush; text layers; brightness/contrast/saturation; rotate/flip; crop with aspect locks and handles (apply bakes crop); resize by pixels; red-eye click tool; undo/redo history; export PNG/JPEG/WebP; service-worker offline shell; privacy (images stay local).",
+    "If unsure, say so and point the user to the matching panel tab.",
     body.context ? `Page context: ${body.context}` : "",
   ]
     .filter(Boolean)

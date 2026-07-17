@@ -3,48 +3,190 @@
 import {
   ChangeEvent,
   DragEvent,
+  PointerEvent as ReactPointerEvent,
+  useCallback,
   useEffect,
   useRef,
   useState,
 } from "react";
+import { CropOverlay } from "@/components/editor/crop-overlay";
+import {
+  PANEL_IDS,
+  PanelId,
+  ToolPanel,
+} from "@/components/editor/tool-panel";
 import { PageAgent } from "@/components/page-agent/page-agent";
+import {
+  bakeToCanvas,
+  composeEdited,
+  downloadBlob,
+  exportDocument,
+  resizeCanvas,
+  stemFromName,
+} from "@/lib/compose";
 import { cn } from "@/lib/cn";
+import { applyAspectToCrop, clampCrop } from "@/lib/crop-math";
 import {
   Adjustments,
+  BrushSettings,
+  CropAspect,
   CropRect,
-  DEFAULT_ADJUSTMENTS,
+  DEFAULT_BRUSH,
+  EditorDoc,
+  EditorSnapshot,
+  EditorTool,
   EXPORT_FORMATS,
   ExportFormat,
   LoadedImage,
+  TextLayer,
+  createInitialDoc,
+  createPaintLayer,
+  createTextLayer,
 } from "@/lib/editor-types";
-import { registerServiceWorker } from "@/lib/register-sw";
 import {
-  downloadBlob,
-  drawEditedImage,
-  exportBlob,
-  stemFromName,
-} from "@/lib/render-image";
-
-type Panel = "adjust" | "crop" | "export";
+  HistoryState,
+  cloneDoc,
+  initHistory,
+  pushHistory,
+  redoHistory,
+  undoHistory,
+} from "@/lib/history";
+import { PaintStore, loadImage } from "@/lib/paint-store";
+import { removeRedEye } from "@/lib/red-eye";
+import { registerServiceWorker } from "@/lib/register-sw";
 
 export function EditorShell() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
-  const imageRef = useRef<HTMLImageElement | null>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const sourceImageRef = useRef<HTMLImageElement | null>(null);
+  const backgroundCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const paintStoreRef = useRef(new PaintStore());
+  const historyRef = useRef<HistoryState | null>(null);
+  const paintingRef = useRef(false);
+  const lastPaintRef = useRef<{ x: number; y: number } | null>(null);
+  const textDragRef = useRef<{
+    id: string;
+    offsetX: number;
+    offsetY: number;
+  } | null>(null);
+  const skipNextComposeRef = useRef(false);
 
   const [image, setImage] = useState<LoadedImage | null>(null);
-  const [adjustments, setAdjustments] =
-    useState<Adjustments>(DEFAULT_ADJUSTMENTS);
-  const [crop, setCrop] = useState<CropRect | null>(null);
-  const [draftCrop, setDraftCrop] = useState<CropRect | null>(null);
+  const [doc, setDoc] = useState<EditorDoc | null>(null);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  const [panel, setPanel] = useState<PanelId>("adjust");
+  const [tool, setTool] = useState<EditorTool>("select");
+  const [brush, setBrush] = useState<BrushSettings>(DEFAULT_BRUSH);
+  const [cropAspect, setCropAspect] = useState<CropAspect>("free");
   const [cropMode, setCropMode] = useState(false);
-  const [panel, setPanel] = useState<Panel>("adjust");
+  const [draftCrop, setDraftCrop] = useState<CropRect | null>(null);
   const [format, setFormat] = useState<ExportFormat>("image/png");
   const [quality, setQuality] = useState(0.92);
   const [busyExport, setBusyExport] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [online, setOnline] = useState(true);
   const [dragOver, setDragOver] = useState(false);
+  const [resizeW, setResizeW] = useState(0);
+  const [resizeH, setResizeH] = useState(0);
+  const [lockAspect, setLockAspect] = useState(true);
+  const [aspectBase, setAspectBase] = useState(1);
+  const [redEyeRadius, setRedEyeRadius] = useState(28);
+  const [bgVersion, setBgVersion] = useState(0);
+  const docRef = useRef<EditorDoc | null>(null);
+
+  useEffect(() => {
+    docRef.current = doc;
+  }, [doc]);
+
+  const syncHistoryFlags = useCallback(() => {
+    const h = historyRef.current;
+    setCanUndo(!!h && h.past.length > 0);
+    setCanRedo(!!h && h.future.length > 0);
+  }, []);
+
+  const getBackground = useCallback((): CanvasImageSource => {
+    return backgroundCanvasRef.current ?? sourceImageRef.current!;
+  }, []);
+
+  const captureSnapshot = useCallback(
+    (nextDoc: EditorDoc): EditorSnapshot => {
+      const paintIds = nextDoc.layers
+        .filter((l) => l.kind === "paint")
+        .map((l) => l.id);
+      return {
+        doc: cloneDoc(nextDoc),
+        paintData: paintStoreRef.current.capture(paintIds),
+        backgroundDataUrl: backgroundCanvasRef.current
+          ? backgroundCanvasRef.current.toDataURL("image/png")
+          : null,
+      };
+    },
+    [],
+  );
+
+  const commitSnapshot = useCallback(
+    (nextDoc: EditorDoc) => {
+      const snap = captureSnapshot(nextDoc);
+      if (!historyRef.current) {
+        historyRef.current = initHistory(snap);
+      } else {
+        historyRef.current = pushHistory(historyRef.current, snap);
+      }
+      setDoc(nextDoc);
+      syncHistoryFlags();
+    },
+    [captureSnapshot, syncHistoryFlags],
+  );
+
+  const restoreSnapshot = useCallback(async (snap: EditorSnapshot) => {
+    const { doc: nextDoc, paintData, backgroundDataUrl } = snap;
+    await paintStoreRef.current.restoreAll(
+      paintData,
+      nextDoc.width,
+      nextDoc.height,
+    );
+
+    if (backgroundDataUrl) {
+      const img = await loadImage(backgroundDataUrl);
+      const canvas = document.createElement("canvas");
+      canvas.width = nextDoc.width;
+      canvas.height = nextDoc.height;
+      canvas.getContext("2d")?.drawImage(img, 0, 0);
+      backgroundCanvasRef.current = canvas;
+    } else {
+      backgroundCanvasRef.current = null;
+    }
+
+    setDoc(cloneDoc(nextDoc));
+    setResizeW(nextDoc.width);
+    setResizeH(nextDoc.height);
+    setAspectBase(nextDoc.width / Math.max(1, nextDoc.height));
+    setBgVersion((v) => v + 1);
+    setCropMode(false);
+    setDraftCrop(null);
+  }, []);
+
+  const undo = useCallback(async () => {
+    const h = historyRef.current;
+    if (!h) return;
+    const next = undoHistory(h);
+    if (!next) return;
+    historyRef.current = next;
+    await restoreSnapshot(next.present);
+    syncHistoryFlags();
+  }, [restoreSnapshot, syncHistoryFlags]);
+
+  const redo = useCallback(async () => {
+    const h = historyRef.current;
+    if (!h) return;
+    const next = redoHistory(h);
+    if (!next) return;
+    historyRef.current = next;
+    await restoreSnapshot(next.present);
+    syncHistoryFlags();
+  }, [restoreSnapshot, syncHistoryFlags]);
 
   useEffect(() => {
     registerServiceWorker();
@@ -59,6 +201,25 @@ export function EditorShell() {
   }, []);
 
   useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      if (e.key.toLowerCase() === "z" && !e.shiftKey) {
+        e.preventDefault();
+        void undo();
+      } else if (
+        e.key.toLowerCase() === "y" ||
+        (e.key.toLowerCase() === "z" && e.shiftKey)
+      ) {
+        e.preventDefault();
+        void redo();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo, redo]);
+
+  useEffect(() => {
     return () => {
       if (image?.objectUrl) URL.revokeObjectURL(image.objectUrl);
     };
@@ -66,22 +227,22 @@ export function EditorShell() {
 
   useEffect(() => {
     const canvas = previewCanvasRef.current;
-    const img = imageRef.current;
-    if (!canvas || !img || !image) return;
+    if (!canvas || !doc || !sourceImageRef.current) return;
+    if (skipNextComposeRef.current) {
+      skipNextComposeRef.current = false;
+      return;
+    }
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    const previewAdjustments = cropMode
-      ? { ...adjustments, rotate: 0 as const, flipH: false, flipV: false }
-      : adjustments;
-    drawEditedImage(
-      ctx,
-      img,
-      image.width,
-      image.height,
-      previewAdjustments,
-      cropMode ? null : crop,
-    );
-  }, [image, adjustments, crop, cropMode]);
+    const previewDoc =
+      cropMode && draftCrop
+        ? { ...doc, crop: null }
+        : doc;
+    composeEdited(ctx, previewDoc, getBackground(), paintStoreRef.current, {
+      ignoreCrop: cropMode,
+      forceIdentityTransform: cropMode,
+    });
+  }, [doc, cropMode, draftCrop, getBackground, bgVersion]);
 
   async function loadFile(file: File) {
     if (!file.type.startsWith("image/")) {
@@ -92,20 +253,32 @@ export function EditorShell() {
     if (image?.objectUrl) URL.revokeObjectURL(image.objectUrl);
 
     const objectUrl = URL.createObjectURL(file);
-    const img = new Image();
-    img.decoding = "async";
-
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve();
-      img.onerror = () => reject(new Error("Could not read that image."));
-      img.src = objectUrl;
-    }).catch((err: Error) => {
+    const img = await loadImage(objectUrl).catch((err: Error) => {
       URL.revokeObjectURL(objectUrl);
       setError(err.message);
       throw err;
     });
 
-    imageRef.current = img;
+    sourceImageRef.current = img;
+    backgroundCanvasRef.current = null;
+    paintStoreRef.current.clear();
+
+    const nextDoc = createInitialDoc(img.naturalWidth, img.naturalHeight);
+    paintStoreRef.current.ensure(
+      nextDoc.layers.find((l) => l.kind === "paint")!.id,
+      nextDoc.width,
+      nextDoc.height,
+    );
+
+    const snap = {
+      doc: cloneDoc(nextDoc),
+      paintData: paintStoreRef.current.capture(
+        nextDoc.layers.filter((l) => l.kind === "paint").map((l) => l.id),
+      ),
+      backgroundDataUrl: null,
+    };
+    historyRef.current = initHistory(snap);
+
     setImage({
       name: file.name || "image",
       objectUrl,
@@ -113,10 +286,16 @@ export function EditorShell() {
       height: img.naturalHeight,
       fileType: file.type,
     });
-    setAdjustments(DEFAULT_ADJUSTMENTS);
-    setCrop(null);
-    setDraftCrop(null);
+    setDoc(nextDoc);
+    setResizeW(nextDoc.width);
+    setResizeH(nextDoc.height);
+    setAspectBase(nextDoc.width / Math.max(1, nextDoc.height));
     setCropMode(false);
+    setDraftCrop(null);
+    setTool("select");
+    setPanel("adjust");
+    setBgVersion((v) => v + 1);
+    syncHistoryFlags();
   }
 
   function onFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -132,56 +311,538 @@ export function EditorShell() {
     if (file) void loadFile(file);
   }
 
-  function startCrop() {
-    if (!image) return;
-    setPanel("crop");
-    setCropMode(true);
-    setDraftCrop(
-      crop ?? {
-        x: Math.round(image.width * 0.1),
-        y: Math.round(image.height * 0.1),
-        w: Math.round(image.width * 0.8),
-        h: Math.round(image.height * 0.8),
-      },
-    );
+  function onAdjustments(patch: Partial<Adjustments>, commit = false) {
+    setDoc((prev) => {
+      if (!prev) return prev;
+      const next = {
+        ...prev,
+        adjustments: { ...prev.adjustments, ...patch },
+      };
+      docRef.current = next;
+      if (commit) queueMicrotask(() => commitSnapshot(next));
+      return next;
+    });
   }
 
+  function onCommitAdjustments() {
+    const current = docRef.current;
+    if (!current) return;
+    commitSnapshot(current);
+  }
+
+  function startCrop() {
+    if (!doc) return;
+    setPanel("crop");
+    setTool("crop");
+    setCropMode(true);
+    const base =
+      doc.crop ??
+      clampCrop(
+        {
+          x: Math.round(doc.width * 0.1),
+          y: Math.round(doc.height * 0.1),
+          w: Math.round(doc.width * 0.8),
+          h: Math.round(doc.height * 0.8),
+        },
+        doc.width,
+        doc.height,
+      );
+    setDraftCrop(applyAspectToCrop(base, cropAspect, doc.width, doc.height));
+  }
+
+  useEffect(() => {
+    if (!cropMode || !draftCrop || !doc) return;
+    setDraftCrop(
+      applyAspectToCrop(draftCrop, cropAspect, doc.width, doc.height),
+    );
+    // only when aspect changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cropAspect]);
+
   function applyCrop() {
-    if (!draftCrop || !image) return;
-    const next: CropRect = {
-      x: Math.max(0, Math.min(image.width - 1, Math.round(draftCrop.x))),
-      y: Math.max(0, Math.min(image.height - 1, Math.round(draftCrop.y))),
-      w: Math.max(1, Math.min(image.width - draftCrop.x, Math.round(draftCrop.w))),
-      h: Math.max(1, Math.min(image.height - draftCrop.y, Math.round(draftCrop.h))),
+    if (!doc || !draftCrop || !sourceImageRef.current) return;
+    const region = clampCrop(draftCrop, doc.width, doc.height);
+
+    // Background only (no paint/text), then crop paint layers individually
+    const bgOnly: EditorDoc = {
+      ...doc,
+      crop: null,
+      adjustments: {
+        ...doc.adjustments,
+        rotate: 0,
+        flipH: false,
+        flipV: false,
+        brightness: 0,
+        contrast: 0,
+        saturation: 0,
+      },
+      layers: doc.layers.filter((l) => l.kind === "background"),
     };
-    setCrop(next);
-    setDraftCrop(null);
+    const baked = bakeToCanvas(bgOnly, getBackground(), paintStoreRef.current, region);
+    backgroundCanvasRef.current = baked;
+
+    const paintLayers = doc.layers.filter((l) => l.kind === "paint");
+    for (const layer of paintLayers) {
+      const src = paintStoreRef.current.ensure(layer.id, doc.width, doc.height);
+      const cropped = document.createElement("canvas");
+      cropped.width = region.w;
+      cropped.height = region.h;
+      cropped
+        .getContext("2d")
+        ?.drawImage(
+          src,
+          region.x,
+          region.y,
+          region.w,
+          region.h,
+          0,
+          0,
+          region.w,
+          region.h,
+        );
+      paintStoreRef.current.delete(layer.id);
+      const nextCanvas = paintStoreRef.current.ensure(layer.id, region.w, region.h);
+      nextCanvas.getContext("2d")?.drawImage(cropped, 0, 0);
+    }
+
+    const textLayers = doc.layers
+      .filter((l): l is TextLayer => l.kind === "text")
+      .map((t) => ({
+        ...t,
+        x: t.x - region.x,
+        y: t.y - region.y,
+      }));
+
+    const bg = doc.layers.find((l) => l.kind === "background")!;
+    const nextDoc: EditorDoc = {
+      width: region.w,
+      height: region.h,
+      adjustments: doc.adjustments,
+      crop: null,
+      activeLayerId: doc.activeLayerId,
+      layers: [bg, ...paintLayers, ...textLayers],
+    };
+
     setCropMode(false);
+    setDraftCrop(null);
+    setTool("select");
+    setResizeW(nextDoc.width);
+    setResizeH(nextDoc.height);
+    setAspectBase(nextDoc.width / Math.max(1, nextDoc.height));
+    setBgVersion((v) => v + 1);
+    commitSnapshot(nextDoc);
+  }
+
+  function cancelCrop() {
+    setCropMode(false);
+    setDraftCrop(null);
+    setTool("select");
+  }
+
+  function resetCrop() {
+    if (!doc) return;
+    setCropMode(false);
+    setDraftCrop(null);
+    if (doc.crop) {
+      commitSnapshot({ ...doc, crop: null });
+    }
+  }
+
+  function clientToDoc(clientX: number, clientY: number) {
+    const canvas = previewCanvasRef.current;
+    if (!canvas || !doc) return null;
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+    // In crop mode preview is identity transform at doc size
+    const x = ((clientX - rect.left) / rect.width) * doc.width;
+    const y = ((clientY - rect.top) / rect.height) * doc.height;
+    return { x, y };
+  }
+
+  function paintAt(x: number, y: number, layerId: string) {
+    if (!doc) return;
+    const canvas = paintStoreRef.current.ensure(layerId, doc.width, doc.height);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.save();
+    ctx.globalAlpha = brush.opacity / 100;
+    ctx.strokeStyle = brush.color;
+    ctx.fillStyle = brush.color;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.lineWidth = brush.size;
+    if (brush.soft) {
+      ctx.shadowColor = brush.color;
+      ctx.shadowBlur = brush.size * 0.35;
+    }
+    const prev = lastPaintRef.current;
+    if (prev) {
+      ctx.beginPath();
+      ctx.moveTo(prev.x, prev.y);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.arc(x, y, brush.size / 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+    lastPaintRef.current = { x, y };
+  }
+
+  function redrawPreview() {
+    const canvas = previewCanvasRef.current;
+    if (!canvas || !doc || !sourceImageRef.current) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    composeEdited(ctx, doc, getBackground(), paintStoreRef.current, {
+      ignoreCrop: cropMode,
+      forceIdentityTransform: cropMode,
+    });
+  }
+
+  function onPointerDown(e: ReactPointerEvent) {
+    if (!doc || cropMode) return;
+    const point = clientToDoc(e.clientX, e.clientY);
+    if (!point) return;
+
+    if (tool === "redeye") {
+      e.preventDefault();
+      applyRedEye(point.x, point.y);
+      return;
+    }
+
+    if (tool === "brush") {
+      const active = doc.layers.find((l) => l.id === doc.activeLayerId);
+      if (!active || active.kind !== "paint") {
+        setError("Select a paint layer before brushing.");
+        return;
+      }
+      setError(null);
+      paintingRef.current = true;
+      lastPaintRef.current = null;
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      paintAt(point.x, point.y, active.id);
+      redrawPreview();
+      return;
+    }
+
+    if (tool === "text" || tool === "select") {
+      const active = doc.layers.find((l) => l.id === doc.activeLayerId);
+      if (active?.kind === "text") {
+        textDragRef.current = {
+          id: active.id,
+          offsetX: point.x - active.x,
+          offsetY: point.y - active.y,
+        };
+        (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      }
+    }
+  }
+
+  function onPointerMove(e: ReactPointerEvent) {
+    if (!doc) return;
+    const point = clientToDoc(e.clientX, e.clientY);
+    if (!point) return;
+
+    if (paintingRef.current && tool === "brush") {
+      paintAt(point.x, point.y, doc.activeLayerId);
+      redrawPreview();
+      return;
+    }
+
+    if (textDragRef.current) {
+      const { id, offsetX, offsetY } = textDragRef.current;
+      setDoc((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          layers: prev.layers.map((layer) =>
+            layer.id === id && layer.kind === "text"
+              ? { ...layer, x: point.x - offsetX, y: point.y - offsetY }
+              : layer,
+          ),
+        };
+      });
+    }
+  }
+
+  function onPointerUp() {
+    const current = docRef.current;
+    if (paintingRef.current && current) {
+      paintingRef.current = false;
+      lastPaintRef.current = null;
+      commitSnapshot(current);
+    }
+    if (textDragRef.current && current) {
+      textDragRef.current = null;
+      commitSnapshot(current);
+    }
+  }
+
+  function applyRedEye(x: number, y: number) {
+    if (!doc) return;
+    const base = bakeToCanvas(
+      {
+        ...doc,
+        layers: doc.layers.filter((l) => l.kind === "background"),
+        crop: null,
+        adjustments: {
+          ...doc.adjustments,
+          rotate: 0,
+          flipH: false,
+          flipV: false,
+          brightness: 0,
+          contrast: 0,
+          saturation: 0,
+        },
+      },
+      getBackground(),
+      paintStoreRef.current,
+      null,
+    );
+    const ctx = base.getContext("2d");
+    if (!ctx) return;
+    const imageData = ctx.getImageData(0, 0, base.width, base.height);
+    removeRedEye(imageData, x, y, redEyeRadius);
+    ctx.putImageData(imageData, 0, 0);
+    backgroundCanvasRef.current = base;
+    setBgVersion((v) => v + 1);
+    commitSnapshot(doc);
+  }
+
+  function applyResize() {
+    if (!doc || !sourceImageRef.current) return;
+    const width = Math.max(1, Math.min(8000, Math.round(resizeW)));
+    const height = Math.max(1, Math.min(8000, Math.round(resizeH)));
+    if (width === doc.width && height === doc.height) return;
+
+    const bgOnly: EditorDoc = {
+      ...doc,
+      crop: null,
+      adjustments: {
+        ...doc.adjustments,
+        rotate: 0,
+        flipH: false,
+        flipV: false,
+        brightness: 0,
+        contrast: 0,
+        saturation: 0,
+      },
+      layers: doc.layers.filter((l) => l.kind === "background"),
+    };
+    const flatBg = bakeToCanvas(bgOnly, getBackground(), paintStoreRef.current, null);
+    backgroundCanvasRef.current = resizeCanvas(flatBg, width, height);
+
+    for (const layer of doc.layers.filter((l) => l.kind === "paint")) {
+      const src = paintStoreRef.current.ensure(layer.id, doc.width, doc.height);
+      const resized = resizeCanvas(src, width, height);
+      paintStoreRef.current.delete(layer.id);
+      const next = paintStoreRef.current.ensure(layer.id, width, height);
+      next.getContext("2d")?.drawImage(resized, 0, 0);
+    }
+
+    const scaleX = width / doc.width;
+    const scaleY = height / doc.height;
+    const nextLayers = doc.layers.map((layer) => {
+      if (layer.kind !== "text") return layer;
+      return {
+        ...layer,
+        x: Math.round(layer.x * scaleX),
+        y: Math.round(layer.y * scaleY),
+        fontSize: Math.max(8, Math.round(layer.fontSize * ((scaleX + scaleY) / 2))),
+      };
+    });
+
+    const nextDoc: EditorDoc = {
+      ...doc,
+      width,
+      height,
+      crop: null,
+      layers: nextLayers,
+    };
+    setBgVersion((v) => v + 1);
+    commitSnapshot(nextDoc);
+  }
+
+  function addPaintLayer() {
+    if (!doc) return;
+    const paints = doc.layers.filter((l) => l.kind === "paint").length;
+    const layer = createPaintLayer(paints + 1);
+    paintStoreRef.current.ensure(layer.id, doc.width, doc.height);
+    const next = {
+      ...doc,
+      layers: [...doc.layers, layer],
+      activeLayerId: layer.id,
+    };
+    setTool("brush");
+    setPanel("brush");
+    commitSnapshot(next);
+  }
+
+  function addTextLayer() {
+    if (!doc) return;
+    const texts = doc.layers.filter((l) => l.kind === "text").length;
+    const layer = createTextLayer(doc.width, doc.height, texts + 1);
+    const next = {
+      ...doc,
+      layers: [...doc.layers, layer],
+      activeLayerId: layer.id,
+    };
+    setTool("text");
+    setPanel("text");
+    commitSnapshot(next);
+  }
+
+  function selectLayer(id: string) {
+    if (!doc) return;
+    const layer = doc.layers.find((l) => l.id === id);
+    setDoc({ ...doc, activeLayerId: id });
+    if (layer?.kind === "paint") {
+      setTool("brush");
+      setPanel("brush");
+    }
+    if (layer?.kind === "text") {
+      setTool("text");
+      setPanel("text");
+    }
+  }
+
+  function toggleLayerVisible(id: string) {
+    if (!doc) return;
+    const next = {
+      ...doc,
+      layers: doc.layers.map((l) =>
+        l.id === id ? { ...l, visible: !l.visible } : l,
+      ),
+    };
+    commitSnapshot(next);
+  }
+
+  function setLayerOpacity(id: string, opacity: number) {
+    setDoc((prev) => {
+      if (!prev) return prev;
+      const next = {
+        ...prev,
+        layers: prev.layers.map((l) =>
+          l.id === id ? { ...l, opacity } : l,
+        ),
+      };
+      docRef.current = next;
+      return next;
+    });
+  }
+
+  function commitLayerOpacity() {
+    const current = docRef.current;
+    if (current) commitSnapshot(current);
+  }
+
+  function updateActiveText(patch: Partial<TextLayer>, commit = false) {
+    setDoc((prev) => {
+      if (!prev) return prev;
+      const next = {
+        ...prev,
+        layers: prev.layers.map((l) =>
+          l.id === prev.activeLayerId && l.kind === "text"
+            ? { ...l, ...patch }
+            : l,
+        ),
+      };
+      docRef.current = next;
+      if (commit) queueMicrotask(() => commitSnapshot(next));
+      return next;
+    });
+  }
+
+  function deleteActiveLayer() {
+    if (!doc) return;
+    const active = doc.layers.find((l) => l.id === doc.activeLayerId);
+    if (!active || active.kind === "background") return;
+    if (active.kind === "paint") paintStoreRef.current.delete(active.id);
+    const layers = doc.layers.filter((l) => l.id !== active.id);
+    const next = {
+      ...doc,
+      layers,
+      activeLayerId: layers[layers.length - 1]?.id ?? layers[0].id,
+    };
+    commitSnapshot(next);
   }
 
   async function onExport() {
-    if (!image || !imageRef.current) return;
+    if (!doc || !sourceImageRef.current) return;
     setBusyExport(true);
     setError(null);
     try {
-      const blob = await exportBlob(
-        imageRef.current,
-        image.width,
-        image.height,
-        adjustments,
-        crop,
+      const blob = await exportDocument(
+        doc,
+        getBackground(),
+        paintStoreRef.current,
         format,
         quality,
       );
       const ext =
         EXPORT_FORMATS.find((f) => f.id === format)?.extension ?? "png";
-      downloadBlob(blob, `${stemFromName(image.name)}.${ext}`);
+      downloadBlob(blob, `${stemFromName(image?.name ?? "image")}.${ext}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Export failed.");
     } finally {
       setBusyExport(false);
     }
   }
+
+  function onResizeWidth(n: number) {
+    setResizeW(n);
+    if (lockAspect) setResizeH(Math.max(1, Math.round(n / aspectBase)));
+  }
+
+  function onResizeHeight(n: number) {
+    setResizeH(n);
+    if (lockAspect) setResizeW(Math.max(1, Math.round(n * aspectBase)));
+  }
+
+  const toolPanelProps = {
+    panel,
+    setPanel,
+    disabled: !doc,
+    doc,
+    tool,
+    setTool,
+    brush,
+    setBrush,
+    cropAspect,
+    setCropAspect,
+    cropMode,
+    startCrop,
+    applyCrop,
+    cancelCrop,
+    resetCrop,
+    onAdjustments,
+    onCommitAdjustments,
+    resizeW,
+    resizeH,
+    setResizeW: onResizeWidth,
+    setResizeH: onResizeHeight,
+    lockAspect,
+    setLockAspect,
+    applyResize,
+    redEyeRadius,
+    setRedEyeRadius,
+    format,
+    setFormat,
+    quality,
+    setQuality,
+    busyExport,
+    onExport,
+    addPaintLayer,
+    addTextLayer,
+    selectLayer,
+    toggleLayerVisible,
+    setLayerOpacity,
+    commitLayerOpacity,
+    updateActiveText,
+    deleteActiveLayer,
+  };
 
   return (
     <div className="relative flex min-h-full flex-1 flex-col">
@@ -193,7 +854,8 @@ export function EditorShell() {
             Lumen
           </h1>
           <p className="mt-1 text-sm text-[var(--muted)]">
-            Edit and convert images in the browser
+            Layers, brush, text, crop, resize ·{" "}
+            {tool !== "select" ? `Tool: ${tool}` : "Edit in the browser"}
             {!online ? " · Offline" : ""}
           </p>
         </div>
@@ -207,29 +869,31 @@ export function EditorShell() {
           />
           <button
             type="button"
+            disabled={!canUndo}
+            className="rounded-xl border border-[var(--line)] bg-[var(--panel)] px-3 py-2 text-sm disabled:opacity-40"
+            onClick={() => void undo()}
+          >
+            Undo
+          </button>
+          <button
+            type="button"
+            disabled={!canRedo}
+            className="rounded-xl border border-[var(--line)] bg-[var(--panel)] px-3 py-2 text-sm disabled:opacity-40"
+            onClick={() => void redo()}
+          >
+            Redo
+          </button>
+          <button
+            type="button"
             className="rounded-xl bg-[var(--ink)] px-4 py-2 text-sm font-medium text-[var(--paper)]"
             onClick={() => fileInputRef.current?.click()}
           >
             Open image
           </button>
-          {image ? (
-            <button
-              type="button"
-              className="rounded-xl border border-[var(--line)] bg-[var(--panel)] px-4 py-2 text-sm text-[var(--ink)]"
-              onClick={() => {
-                setAdjustments(DEFAULT_ADJUSTMENTS);
-                setCrop(null);
-                setDraftCrop(null);
-                setCropMode(false);
-              }}
-            >
-              Reset all
-            </button>
-          ) : null}
         </div>
       </header>
 
-      <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4 p-4 pb-28 sm:p-6 lg:grid lg:grid-cols-[1fr_300px] lg:pb-6">
+      <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4 p-4 pb-36 sm:p-6 lg:grid lg:grid-cols-[1fr_320px] lg:pb-6">
         <section
           className={cn(
             "flex min-h-[280px] flex-1 flex-col overflow-hidden rounded-3xl border border-[var(--line)] bg-[var(--panel)]/80 backdrop-blur-sm transition",
@@ -242,7 +906,7 @@ export function EditorShell() {
           onDragLeave={() => setDragOver(false)}
           onDrop={onDrop}
         >
-          {!image ? (
+          {!image || !doc ? (
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
@@ -252,22 +916,32 @@ export function EditorShell() {
                 Drop an image here
               </span>
               <span className="max-w-sm text-sm text-[var(--muted)]">
-                PNG, JPEG, WebP, and other browser-supported formats. Files stay
-                on this device.
+                Then paint, add text, crop with aspect locks, resize by pixels,
+                fix red-eye, and export — with full undo/redo.
               </span>
             </button>
           ) : (
             <div className="flex flex-1 items-center justify-center overflow-auto p-3 sm:p-6">
-              <div className="relative max-h-full max-w-full">
+              <div ref={stageRef} className="relative max-h-full max-w-full">
                 <canvas
                   ref={previewCanvasRef}
-                  className="max-h-[min(70vh,720px)] max-w-full rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.25)]"
+                  className={cn(
+                    "max-h-[min(70vh,720px)] max-w-full touch-none rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.25)]",
+                    tool === "brush" && "cursor-crosshair",
+                    tool === "redeye" && "cursor-cell",
+                    (tool === "text" || tool === "select") && "cursor-move",
+                  )}
+                  onPointerDown={onPointerDown}
+                  onPointerMove={onPointerMove}
+                  onPointerUp={onPointerUp}
+                  onPointerCancel={onPointerUp}
                 />
-                {cropMode && draftCrop && image ? (
+                {cropMode && draftCrop ? (
                   <CropOverlay
-                    imageWidth={image.width}
-                    imageHeight={image.height}
+                    imageWidth={doc.width}
+                    imageHeight={doc.height}
                     crop={draftCrop}
+                    aspect={cropAspect}
                     onChange={setDraftCrop}
                   />
                 ) : null}
@@ -279,55 +953,34 @@ export function EditorShell() {
               {error}
             </p>
           ) : null}
-          {image ? (
+          {image && doc ? (
             <p className="border-t border-[var(--line)] px-4 py-2 text-xs text-[var(--muted)]">
-              {image.name} · {image.width}×{image.height}
-              {crop ? ` · cropped ${crop.w}×${crop.h}` : ""}
+              {image.name} · {doc.width}×{doc.height} · {doc.layers.length}{" "}
+              layers · Ctrl/Cmd+Z undo
             </p>
           ) : null}
         </section>
 
         <aside className="hidden lg:block">
-          <ToolPanel
-            panel={panel}
-            setPanel={setPanel}
-            image={image}
-            adjustments={adjustments}
-            setAdjustments={setAdjustments}
-            cropMode={cropMode}
-            startCrop={startCrop}
-            applyCrop={applyCrop}
-            cancelCrop={() => {
-              setCropMode(false);
-              setDraftCrop(null);
-            }}
-            resetCrop={() => {
-              setCrop(null);
-              setDraftCrop(null);
-              setCropMode(false);
-            }}
-            format={format}
-            setFormat={setFormat}
-            quality={quality}
-            setQuality={setQuality}
-            busyExport={busyExport}
-            onExport={onExport}
-          />
+          <ToolPanel {...toolPanelProps} />
         </aside>
       </div>
 
       <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-[var(--line)] bg-[var(--panel)]/95 backdrop-blur-md lg:hidden">
-        <div className="flex gap-1 p-2">
-          {(["adjust", "crop", "export"] as Panel[]).map((id) => (
+        <div className="flex gap-1 overflow-x-auto p-2">
+          {PANEL_IDS.map((id) => (
             <button
               key={id}
               type="button"
               onClick={() => {
                 setPanel(id);
                 if (id === "crop") startCrop();
+                if (id === "brush") setTool("brush");
+                if (id === "text") setTool("text");
+                if (id === "redeye") setTool("redeye");
               }}
               className={cn(
-                "flex-1 rounded-xl px-3 py-2 text-sm capitalize",
+                "shrink-0 rounded-xl px-3 py-2 text-xs capitalize",
                 panel === id
                   ? "bg-[var(--ink)] text-[var(--paper)]"
                   : "text-[var(--muted)]",
@@ -337,399 +990,12 @@ export function EditorShell() {
             </button>
           ))}
         </div>
-        <div className="max-h-[40vh] overflow-y-auto px-3 pb-3">
-          <ToolPanel
-            panel={panel}
-            setPanel={setPanel}
-            image={image}
-            adjustments={adjustments}
-            setAdjustments={setAdjustments}
-            cropMode={cropMode}
-            startCrop={startCrop}
-            applyCrop={applyCrop}
-            cancelCrop={() => {
-              setCropMode(false);
-              setDraftCrop(null);
-            }}
-            resetCrop={() => {
-              setCrop(null);
-              setDraftCrop(null);
-              setCropMode(false);
-            }}
-            format={format}
-            setFormat={setFormat}
-            quality={quality}
-            setQuality={setQuality}
-            busyExport={busyExport}
-            onExport={onExport}
-            compact
-          />
+        <div className="max-h-[38vh] overflow-y-auto px-3 pb-3">
+          <ToolPanel {...toolPanelProps} compact />
         </div>
       </nav>
 
       <PageAgent />
-    </div>
-  );
-}
-
-function ToolPanel({
-  panel,
-  setPanel,
-  image,
-  adjustments,
-  setAdjustments,
-  cropMode,
-  startCrop,
-  applyCrop,
-  cancelCrop,
-  resetCrop,
-  format,
-  setFormat,
-  quality,
-  setQuality,
-  busyExport,
-  onExport,
-  compact,
-}: {
-  panel: Panel;
-  setPanel: (p: Panel) => void;
-  image: LoadedImage | null;
-  adjustments: Adjustments;
-  setAdjustments: (a: Adjustments | ((prev: Adjustments) => Adjustments)) => void;
-  cropMode: boolean;
-  startCrop: () => void;
-  applyCrop: () => void;
-  cancelCrop: () => void;
-  resetCrop: () => void;
-  format: ExportFormat;
-  setFormat: (f: ExportFormat) => void;
-  quality: number;
-  setQuality: (q: number) => void;
-  busyExport: boolean;
-  onExport: () => void;
-  compact?: boolean;
-}) {
-  const disabled = !image;
-
-  return (
-    <div
-      className={cn(
-        "rounded-3xl border border-[var(--line)] bg-[var(--panel)]/90 p-4",
-        compact && "border-0 bg-transparent p-0",
-      )}
-    >
-      {!compact ? (
-        <div className="mb-4 flex gap-1 rounded-xl bg-[var(--panel-2)] p-1">
-          {(["adjust", "crop", "export"] as Panel[]).map((id) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => {
-                setPanel(id);
-                if (id === "crop") startCrop();
-              }}
-              className={cn(
-                "flex-1 rounded-lg px-2 py-1.5 text-sm capitalize",
-                panel === id
-                  ? "bg-[var(--ink)] text-[var(--paper)]"
-                  : "text-[var(--muted)]",
-              )}
-            >
-              {id}
-            </button>
-          ))}
-        </div>
-      ) : null}
-
-      {panel === "adjust" ? (
-        <div className="space-y-4">
-          <Slider
-            label="Brightness"
-            value={adjustments.brightness}
-            min={-50}
-            max={50}
-            disabled={disabled}
-            onChange={(brightness) =>
-              setAdjustments((a) => ({ ...a, brightness }))
-            }
-          />
-          <Slider
-            label="Contrast"
-            value={adjustments.contrast}
-            min={-50}
-            max={50}
-            disabled={disabled}
-            onChange={(contrast) => setAdjustments((a) => ({ ...a, contrast }))}
-          />
-          <Slider
-            label="Saturation"
-            value={adjustments.saturation}
-            min={-100}
-            max={100}
-            disabled={disabled}
-            onChange={(saturation) =>
-              setAdjustments((a) => ({ ...a, saturation }))
-            }
-          />
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={disabled}
-              className="rounded-xl border border-[var(--line)] px-3 py-2 text-sm disabled:opacity-40"
-              onClick={() =>
-                setAdjustments((a) => ({
-                  ...a,
-                  rotate: (((a.rotate + 90) % 360) as Adjustments["rotate"]),
-                }))
-              }
-            >
-              Rotate 90°
-            </button>
-            <button
-              type="button"
-              disabled={disabled}
-              className="rounded-xl border border-[var(--line)] px-3 py-2 text-sm disabled:opacity-40"
-              onClick={() =>
-                setAdjustments((a) => ({ ...a, flipH: !a.flipH }))
-              }
-            >
-              Flip H
-            </button>
-            <button
-              type="button"
-              disabled={disabled}
-              className="rounded-xl border border-[var(--line)] px-3 py-2 text-sm disabled:opacity-40"
-              onClick={() =>
-                setAdjustments((a) => ({ ...a, flipV: !a.flipV }))
-              }
-            >
-              Flip V
-            </button>
-          </div>
-          <button
-            type="button"
-            disabled={disabled}
-            className="w-full rounded-xl border border-[var(--line)] px-3 py-2 text-sm disabled:opacity-40"
-            onClick={() => setAdjustments(DEFAULT_ADJUSTMENTS)}
-          >
-            Reset adjustments
-          </button>
-        </div>
-      ) : null}
-
-      {panel === "crop" ? (
-        <div className="space-y-3 text-sm text-[var(--muted)]">
-          <p>Drag the crop box on the image, then apply.</p>
-          <div className="flex flex-wrap gap-2">
-            {!cropMode ? (
-              <button
-                type="button"
-                disabled={disabled}
-                className="rounded-xl bg-[var(--ink)] px-3 py-2 text-[var(--paper)] disabled:opacity-40"
-                onClick={startCrop}
-              >
-                Start crop
-              </button>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  className="rounded-xl bg-[var(--accent)] px-3 py-2 text-[var(--accent-ink)]"
-                  onClick={applyCrop}
-                >
-                  Apply crop
-                </button>
-                <button
-                  type="button"
-                  className="rounded-xl border border-[var(--line)] px-3 py-2"
-                  onClick={cancelCrop}
-                >
-                  Cancel
-                </button>
-              </>
-            )}
-            <button
-              type="button"
-              disabled={disabled}
-              className="rounded-xl border border-[var(--line)] px-3 py-2 disabled:opacity-40"
-              onClick={resetCrop}
-            >
-              Reset crop
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {panel === "export" ? (
-        <div className="space-y-4">
-          <label className="block text-sm">
-            <span className="mb-1 block text-[var(--muted)]">Format</span>
-            <select
-              value={format}
-              disabled={disabled}
-              onChange={(e) => setFormat(e.target.value as ExportFormat)}
-              className="w-full rounded-xl border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2 text-[var(--ink)] disabled:opacity-40"
-            >
-              {EXPORT_FORMATS.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          {format !== "image/png" ? (
-            <Slider
-              label="Quality"
-              value={Math.round(quality * 100)}
-              min={10}
-              max={100}
-              disabled={disabled}
-              onChange={(v) => setQuality(v / 100)}
-            />
-          ) : null}
-          <button
-            type="button"
-            disabled={disabled || busyExport}
-            className="w-full rounded-xl bg-[var(--accent)] px-3 py-2.5 text-sm font-semibold text-[var(--accent-ink)] disabled:opacity-40"
-            onClick={onExport}
-          >
-            {busyExport ? "Exporting…" : "Download"}
-          </button>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function Slider({
-  label,
-  value,
-  min,
-  max,
-  disabled,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  disabled?: boolean;
-  onChange: (value: number) => void;
-}) {
-  return (
-    <label className="block text-sm">
-      <span className="mb-1 flex justify-between text-[var(--muted)]">
-        <span>{label}</span>
-        <span>{value}</span>
-      </span>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        value={value}
-        disabled={disabled}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full accent-[var(--accent)] disabled:opacity-40"
-      />
-    </label>
-  );
-}
-
-function CropOverlay({
-  imageWidth,
-  imageHeight,
-  crop,
-  onChange,
-}: {
-  imageWidth: number;
-  imageHeight: number;
-  crop: CropRect;
-  onChange: (crop: CropRect) => void;
-}) {
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{
-    startX: number;
-    startY: number;
-    origin: CropRect;
-  } | null>(null);
-
-  function clientToImage(clientX: number, clientY: number) {
-    const el = wrapRef.current;
-    if (!el) return { x: 0, y: 0 };
-    const rect = el.getBoundingClientRect();
-    const x = ((clientX - rect.left) / rect.width) * imageWidth;
-    const y = ((clientY - rect.top) / rect.height) * imageHeight;
-    return { x, y };
-  }
-
-  return (
-    <div
-      ref={wrapRef}
-      className="absolute inset-0 cursor-move"
-      onPointerDown={(e) => {
-        (e.target as HTMLElement).setPointerCapture(e.pointerId);
-        dragRef.current = {
-          startX: e.clientX,
-          startY: e.clientY,
-          origin: { ...crop },
-        };
-      }}
-      onPointerMove={(e) => {
-        if (!dragRef.current || !wrapRef.current) return;
-        const rect = wrapRef.current.getBoundingClientRect();
-        const dx =
-          ((e.clientX - dragRef.current.startX) / rect.width) * imageWidth;
-        const dy =
-          ((e.clientY - dragRef.current.startY) / rect.height) * imageHeight;
-        const origin = dragRef.current.origin;
-        onChange({
-          ...origin,
-          x: Math.max(0, Math.min(imageWidth - origin.w, origin.x + dx)),
-          y: Math.max(0, Math.min(imageHeight - origin.h, origin.y + dy)),
-        });
-      }}
-      onPointerUp={() => {
-        dragRef.current = null;
-      }}
-    >
-      <div
-        className="absolute border-2 border-[var(--accent)] bg-[rgba(214,180,120,0.12)]"
-        style={{
-          left: `${(crop.x / imageWidth) * 100}%`,
-          top: `${(crop.y / imageHeight) * 100}%`,
-          width: `${(crop.w / imageWidth) * 100}%`,
-          height: `${(crop.h / imageHeight) * 100}%`,
-        }}
-      />
-      <button
-        type="button"
-        aria-label="Resize crop"
-        className="absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--accent)]"
-        style={{
-          left: `${((crop.x + crop.w) / imageWidth) * 100}%`,
-          top: `${((crop.y + crop.h) / imageHeight) * 100}%`,
-        }}
-        onPointerDown={(e) => {
-          e.stopPropagation();
-          (e.target as HTMLElement).setPointerCapture(e.pointerId);
-          const origin = { ...crop };
-          const onMove = (ev: PointerEvent) => {
-            const now = clientToImage(ev.clientX, ev.clientY);
-            onChange({
-              x: origin.x,
-              y: origin.y,
-              w: Math.max(8, Math.min(imageWidth - origin.x, now.x - origin.x)),
-              h: Math.max(8, Math.min(imageHeight - origin.y, now.y - origin.y)),
-            });
-          };
-          const onUp = () => {
-            window.removeEventListener("pointermove", onMove);
-            window.removeEventListener("pointerup", onUp);
-          };
-          window.addEventListener("pointermove", onMove);
-          window.addEventListener("pointerup", onUp);
-        }}
-      />
     </div>
   );
 }
