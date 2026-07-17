@@ -6,7 +6,7 @@ import {
   readExif,
   type ExifPayload,
 } from "@/lib/convert/exif";
-import { wrapJpegAsHeic } from "@/lib/convert/heic-encode";
+import { encodeRgbaAsHeic } from "@/lib/convert/heic-encode";
 import { imageToImageData } from "@/lib/convert/decode";
 import type { ConvertFormat, ConvertOptions } from "@/lib/convert/types";
 import { CONVERT_FORMATS } from "@/lib/convert/types";
@@ -43,7 +43,7 @@ export async function encodeImage(
   options: ConvertOptions,
   exif: ExifPayload | null,
 ): Promise<Blob> {
-  const { canvas } = imageToImageData(source, width, height);
+  const { canvas, imageData } = imageToImageData(source, width, height);
   const q = Math.min(1, Math.max(0.05, options.quality));
   const keep = options.keepExif ? exif?.binary ?? null : null;
 
@@ -72,10 +72,9 @@ export async function encodeImage(
       );
     }
     case "image/heic": {
-      let jpeg = await canvasToBlob(canvas, "image/jpeg", Math.max(q, 0.85));
-      if (keep) jpeg = await injectJpegExif(jpeg, keep);
-      const jpegBytes = new Uint8Array(await jpeg.arrayBuffer());
-      const heic = wrapJpegAsHeic(jpegBytes, width, height);
+      const rgba = new Uint8Array(imageData.data);
+      const heic = await encodeRgbaAsHeic(rgba, width, height);
+      // HEVC HEIC from elheif does not re-inject EXIF; pixels only.
       return new Blob([uint8ToArrayBuffer(heic)], { type: "image/heic" });
     }
     default:

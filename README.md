@@ -36,4 +36,4 @@ If pnpm asks about build scripts for `sharp` / `unrs-resolver`, approve them (or
 
 ## Stack
 
-Next.js App Router, React 19, Tailwind CSS 4, TypeScript, Canvas API, `heic2any`, `exifr`, `piexifjs`, `jszip`.
+Next.js App Router, React 19, Tailwind CSS 4, TypeScript, Canvas API, `heic2any`, `elheif` (HEVC HEIC), `exifr`, `piexifjs`, `jszip`.

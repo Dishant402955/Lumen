@@ -171,8 +171,8 @@ export function BatchConvertPanel({ compact }: { compact?: boolean }) {
           Keep EXIF metadata
         </label>
         <p className="text-xs text-[var(--muted)]">
-          JPEG: full EXIF. PNG/WebP/HEIC: best-effort. AVIF: pixels only (no
-          EXIF inject yet). HEIC output uses a JPEG-in-HEIF container.
+          JPEG: full EXIF. PNG/WebP: best-effort. AVIF/HEIC: pixels only. HEIC
+          export uses real HEVC (libheif/kvazaar in WASM).
         </p>
 
         <div className="flex flex-wrap gap-2">

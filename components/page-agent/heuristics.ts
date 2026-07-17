@@ -77,7 +77,7 @@ const RULES: Array<{
   {
     patterns: [/avif|heic|heif|exif|metadata|format conversion/i],
     answer:
-      "Export and Convert support PNG, JPEG, WebP, AVIF, and HEIC. Keep EXIF is strongest on JPEG.",
+      "Export and Convert support PNG, JPEG, WebP, AVIF, and HEIC. HEIC output is real HEVC (WASM). Keep EXIF is strongest on JPEG; AVIF/HEIC are pixels only.",
     targets: ["panel-export", "panel-convert"],
     panel: "export",
   },

@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   turbopack: {},
+  serverExternalPackages: ["elheif"],
   headers: async () => [
     {
       source: "/sw.js",

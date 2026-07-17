@@ -51,8 +51,8 @@ export const CONVERT_FORMATS: ConvertFormatOption[] = [
     id: "image/heic",
     label: "HEIC",
     extension: "heic",
-    hasQuality: true,
-    exifSupport: "partial",
+    hasQuality: false,
+    exifSupport: "none",
   },
 ];
 

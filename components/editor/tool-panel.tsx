@@ -707,7 +707,7 @@ export function ToolPanel(props: Props) {
               ))}
             </select>
           </label>
-          {format !== "image/png" ? (
+          {EXPORT_FORMATS.find((f) => f.id === format)?.hasQuality ? (
             <Slider
               label="Quality"
               value={Math.round(quality * 100)}
@@ -726,6 +726,10 @@ export function ToolPanel(props: Props) {
             />
             Keep EXIF metadata
           </label>
+          <p className="text-xs text-[var(--muted)]">
+            HEIC uses HEVC (WASM). Keep EXIF is strongest on JPEG; AVIF/HEIC are
+            pixels only.
+          </p>
           <button
             type="button"
             disabled={disabled || busyExport}
